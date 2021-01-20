@@ -465,6 +465,10 @@ type ServiceAttributes struct {
 	// The port that the user provides in the meshNetworks config is the service port.
 	// We translate that to the appropriate node port here.
 	ClusterExternalPorts map[string]map[uint32]uint32
+
+	// For Tess
+	ApplicationInstance string
+	ApplicationService  string
 }
 
 // ServiceDiscovery enumerates Istio service instances.

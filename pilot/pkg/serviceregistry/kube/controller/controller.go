@@ -479,7 +479,9 @@ func (c *Controller) onServiceEvent(curr interface{}, event model.Event) error {
 			c.xdsUpdater.EDSCacheUpdate(c.clusterID, string(svcConv.Hostname), svc.Namespace, endpoints)
 		}
 
-		// TODO: update application instance and application service -- lhuang8
+		if features.EnableTessCustom {
+			resolveApplicationService(c, &svcConv.Attributes)
+		}
 	}
 
 	c.xdsUpdater.SvcUpdate(c.clusterID, string(svcConv.Hostname), svc.Namespace, event)
