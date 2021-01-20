@@ -144,6 +144,12 @@ const (
 	LocalityLabel = "istio-locality"
 	// k8s istio-locality label separator
 	k8sSeparator = "."
+
+	// ApplicationInstanceNameLabel is the label of the Tess application instance name
+	ApplicationInstanceNameLabel = "applicationinstance.tess.io/name"
+
+	// ApplicationServiceResourceIdLabel is the label of the Tess application service resource-id
+	ApplicationServiceResourceIdLabel = "applicationservice.cms.tess.io/resource-id"
 )
 
 const (

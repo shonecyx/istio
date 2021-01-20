@@ -42,6 +42,9 @@ import (
 	istioclient "istio.io/client-go/pkg/clientset/versioned"
 	istioinformer "istio.io/client-go/pkg/informers/externalversions"
 	"istio.io/pkg/version"
+
+	tessinformer "tess.io/ebay/client-go/informers"
+	tessclient "tess.io/ebay/client-go/tess"
 )
 
 var _ ExtendedClient = MockClient{}
@@ -98,6 +101,14 @@ func (c MockClient) GatewayAPIInformer() serviceapisinformer.SharedInformerFacto
 }
 
 func (c MockClient) MCSApisInformer() mcsapisinformer.SharedInformerFactory {
+	panic("not used in mock")
+}
+
+func (c MockClient) Tess() tessclient.Interface {
+	panic("not used in mock")
+}
+
+func (c MockClient) TessInformer() tessinformer.SharedInformerFactory {
 	panic("not used in mock")
 }
 
