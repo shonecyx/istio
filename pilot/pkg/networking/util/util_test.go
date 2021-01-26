@@ -1359,3 +1359,55 @@ func TestByteCount(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildStatPrefix_TessCustom(t *testing.T) {
+	features.EnableTessCustom = true
+
+	tests := []struct {
+		name        string
+		statPattern string
+		host        string
+		subsetName  string
+		port        *model.Port
+		attributes  model.ServiceAttributes
+		want        string
+	}{
+		{
+			"Service FQDN with appliction instance and application service",
+			"%SERVICE_FQDN%.app_inst.%APPLICATION_INSTANCE%.app_svc.%APPLICATION_SERVICE%",
+			"reviews.default.svc.cluster.local",
+			"",
+			&model.Port{Name: "grpc-svc", Port: 7443, Protocol: "GRPC"},
+			model.ServiceAttributes{
+				ServiceRegistry:     string(serviceregistry.Kubernetes),
+				Name:                "reviews",
+				Namespace:           "namespace1",
+				ApplicationInstance: "app-inst:prod",
+				ApplicationService:  "app-svc:prod",
+			},
+			"reviews.default.svc.cluster.local.app_inst.app-inst%3Aprod.app_svc.app-svc%3Aprod",
+		},
+		{
+			"Service FQDN with unknown appliction instance and application service",
+			"%SERVICE_FQDN%.app_inst.%APPLICATION_INSTANCE%.app_svc.%APPLICATION_SERVICE%",
+			"reviews.default.svc.cluster.local",
+			"",
+			&model.Port{Name: "grpc-svc", Port: 7443, Protocol: "GRPC"},
+			model.ServiceAttributes{
+				ServiceRegistry: string(serviceregistry.Kubernetes),
+				Name:            "reviews",
+				Namespace:       "namespace1",
+			},
+			"reviews.default.svc.cluster.local.app_inst.unknown.app_svc.unknown",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := BuildStatPrefix(tt.statPattern, tt.host, tt.subsetName, tt.port, tt.attributes)
+			if got != tt.want {
+				t.Errorf("Expected alt statname %s, but got %s", tt.want, got)
+			}
+		})
+	}
+}

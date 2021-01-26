@@ -17,6 +17,7 @@ package util
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -97,6 +98,10 @@ const (
 	servicePortStatPattern     = "%SERVICE_PORT%"
 	servicePortNameStatPattern = "%SERVICE_PORT_NAME%"
 	subsetNameStatPattern      = "%SUBSET_NAME%"
+
+	// Tess specific patterns
+	applicationInstancePattern = "%APPLICATION_INSTANCE%"
+	applicationServicePattern  = "%APPLICATION_SERVICE%"
 )
 
 // ALPNH2Only advertises that Proxy is going to use HTTP/2 when talking to the cluster.
@@ -577,6 +582,23 @@ func BuildStatPrefix(statPattern string, host string, subset string, port *model
 	prefix = strings.ReplaceAll(prefix, subsetNameStatPattern, subset)
 	prefix = strings.ReplaceAll(prefix, servicePortStatPattern, strconv.Itoa(port.Port))
 	prefix = strings.ReplaceAll(prefix, servicePortNameStatPattern, port.Name)
+
+	if features.EnableTessCustom {
+		appInst := "unknown"
+		appSvc := "unknown"
+
+		// application instance name and application service resource-id may incude ':',
+		// so need to escape them in URL encoding
+		if len(attributes.ApplicationInstance) > 0 {
+			appInst = url.QueryEscape(attributes.ApplicationInstance)
+		}
+		if len(attributes.ApplicationService) > 0 {
+			appSvc = url.QueryEscape(attributes.ApplicationService)
+		}
+
+		prefix = strings.ReplaceAll(prefix, applicationInstancePattern, appInst)
+		prefix = strings.ReplaceAll(prefix, applicationServicePattern, appSvc)
+	}
 	return prefix
 }
 
