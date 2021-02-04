@@ -443,8 +443,8 @@ var (
 	MultiRootMesh = env.RegisterBoolVar("ISTIO_MULTIROOT_MESH", false,
 		"If enabled, mesh will support certificates signed by more than one trustAnchor for ISTIO_MUTUAL mTLS")
 
-	EnableTessCustom = env.RegisterBoolVar("PILOT_ENABLE_TESS_CUSTOM", false,
-		"If enabled, Istiod will access Tess resources to generate customized XDS config. "+
+	EnableTessCustomStats = env.RegisterBoolVar("PILOT_ENABLE_TESS_CUSTOM_STATS", false,
+		"If enabled, Istiod will access Tess resources to generate customized Cluster stat. "+
 			"This can be disabled for developing non-Tess related features.").Get()
 )
 

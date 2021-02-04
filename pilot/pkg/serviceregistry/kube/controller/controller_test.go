@@ -2124,7 +2124,7 @@ func TestKubeEndpointsControllerOnEvent(t *testing.T) {
 }
 
 func TestTessCustom_ServiceUpdate(t *testing.T) {
-	features.EnableTessCustom = true
+	features.EnableTessCustomStats = true
 
 	opts := FakeControllerOptions{Mode: EndpointsOnly}
 	controller, fx := NewFakeControllerWithOptions(opts)
@@ -2161,7 +2161,7 @@ func TestTessCustom_ServiceUpdate(t *testing.T) {
 // Validates that when Pilot sees Serivce before the corresponding ApplicationInstance,
 // it triggers service event on appliction instance event.
 func TestTessCustom_ServiceUpdateBeforeApplicationInstanceUpdate(t *testing.T) {
-	features.EnableTessCustom = true
+	features.EnableTessCustomStats = true
 
 	opts := FakeControllerOptions{Mode: EndpointsOnly}
 	controller, fx := NewFakeControllerWithOptions(opts)

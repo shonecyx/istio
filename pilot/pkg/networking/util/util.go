@@ -583,7 +583,7 @@ func BuildStatPrefix(statPattern string, host string, subset string, port *model
 	prefix = strings.ReplaceAll(prefix, servicePortStatPattern, strconv.Itoa(port.Port))
 	prefix = strings.ReplaceAll(prefix, servicePortNameStatPattern, port.Name)
 
-	if features.EnableTessCustom {
+	if features.EnableTessCustomStats {
 		appInst := "unknown"
 		appSvc := "unknown"
 

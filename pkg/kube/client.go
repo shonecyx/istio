@@ -397,7 +397,7 @@ func newClientInternal(clientFactory util.Factory, revision string) (*client, er
 	}
 	c.extSet = ext
 
-	if features.EnableTessCustom {
+	if features.EnableTessCustomStats {
 		c.tess, err = tessclient.NewForConfig(c.config)
 		if err != nil {
 			return nil, err
@@ -492,7 +492,7 @@ func (c *client) RunAndWait(stop <-chan struct{}) {
 	c.metadataInformer.Start(stop)
 	c.istioInformer.Start(stop)
 	c.gatewayapiInformer.Start(stop)
-	if features.EnableTessCustom {
+	if features.EnableTessCustomStats {
 		c.tessInformer.Start(stop)
 	}
 	if c.fastSync {
@@ -504,7 +504,7 @@ func (c *client) RunAndWait(stop <-chan struct{}) {
 		fastWaitForCacheSyncDynamic(c.metadataInformer)
 		fastWaitForCacheSync(c.istioInformer)
 		fastWaitForCacheSync(c.gatewayapiInformer)
-		if features.EnableTessCustom {
+		if features.EnableTessCustomStats {
 			fastWaitForCacheSync(c.tessInformer)
 		}
 		_ = wait.PollImmediate(time.Microsecond, wait.ForeverTestTimeout, func() (bool, error) {
@@ -519,7 +519,7 @@ func (c *client) RunAndWait(stop <-chan struct{}) {
 		c.metadataInformer.WaitForCacheSync(stop)
 		c.istioInformer.WaitForCacheSync(stop)
 		c.gatewayapiInformer.WaitForCacheSync(stop)
-		if features.EnableTessCustom {
+		if features.EnableTessCustomStats {
 			c.tessInformer.WaitForCacheSync(stop)
 		}
 	}

@@ -44,7 +44,7 @@ func cleanupTestEnvWithTessApi(ci tessclient.Interface) {
 }
 
 func TestApplicationInstanceCache(t *testing.T) {
-	features.EnableTessCustom = true
+	features.EnableTessCustomStats = true
 
 	t.Run("fakeTessApiserver", func(t *testing.T) {
 		t.Parallel()
@@ -98,7 +98,7 @@ func testApplicationInstanceCache(t *testing.T) {
 }
 
 func TestApplicationInstanceCacheEvents(t *testing.T) {
-	features.EnableTessCustom = true
+	features.EnableTessCustomStats = true
 	t.Parallel()
 
 	fakeClient := kubelib.NewFakeClient()

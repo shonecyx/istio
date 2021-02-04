@@ -1361,7 +1361,7 @@ func TestByteCount(t *testing.T) {
 }
 
 func TestBuildStatPrefix_TessCustom(t *testing.T) {
-	features.EnableTessCustom = true
+	features.EnableTessCustomStats = true
 
 	tests := []struct {
 		name        string

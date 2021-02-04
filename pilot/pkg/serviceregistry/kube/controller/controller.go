@@ -369,7 +369,7 @@ func NewController(kubeClient kubelib.Client, options Options) *Controller {
 	})
 	c.registerHandlers(c.pods.informer, "Pods", c.pods.onEvent, nil)
 
-	if features.EnableTessCustom {
+	if features.EnableTessCustomStats {
 		c.tessClient = kubeClient.Tess()
 		c.appInsts = newApplicationInstanceCache(c, kubeClient.TessInformer().Apps().V1alpha2().ApplicationInstances())
 		c.registerHandlers(c.appInsts.informer, "ApplicationInstances", c.appInsts.onEvent, nil)
@@ -479,7 +479,7 @@ func (c *Controller) onServiceEvent(curr interface{}, event model.Event) error {
 			c.xdsUpdater.EDSCacheUpdate(c.clusterID, string(svcConv.Hostname), svc.Namespace, endpoints)
 		}
 
-		if features.EnableTessCustom {
+		if features.EnableTessCustomStats {
 			resolveApplicationService(c, &svcConv.Attributes)
 		}
 	}
