@@ -69,6 +69,11 @@ webhooks:
   {{- else }}
     matchLabels:
       istio-injection: enabled
+      {{- if .Values.sidecarInjectorWebhook.namespaceSelector.matchLabels }}
+        {{- range $key, $val := .Values.sidecarInjectorWebhook.namespaceSelector.matchLabels }}
+        {{ $key }}: "{{ $val }}"
+        {{- end }}
+      {{- end }}
   {{- end }}
   {{- if .Values.sidecarInjectorWebhook.objectSelector.enabled }}
   objectSelector:

@@ -100,6 +100,9 @@ sidecarInjectorWebhook:
     enabled: true
     autoInject: true
 
+  namespaceSelector:
+    matchLabels: {}
+
   rewriteAppHTTPProbe: true
 
   # Templates defines a set of custom injection templates that can be used. For example, defining:
