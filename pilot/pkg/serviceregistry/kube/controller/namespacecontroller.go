@@ -25,6 +25,7 @@ import (
 	listerv1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 
+	"istio.io/istio/pilot/pkg/serviceregistry/kube/controller/filter"
 	"istio.io/istio/pkg/kube"
 	"istio.io/istio/pkg/queue"
 	"istio.io/istio/security/pkg/k8s"
@@ -48,23 +49,23 @@ type NamespaceController struct {
 	client  corev1.CoreV1Interface
 
 	queue              queue.Instance
-	namespacesInformer cache.SharedInformer
-	configMapInformer  cache.SharedInformer
+	namespacesInformer filter.FilteredSharedIndexInformer
+	configMapInformer  filter.FilteredSharedIndexInformer
 	namespaceLister    listerv1.NamespaceLister
 	configmapLister    listerv1.ConfigMapLister
 }
 
 // NewNamespaceController returns a pointer to a newly constructed NamespaceController instance.
-func NewNamespaceController(data func() map[string]string, kubeClient kube.Client) *NamespaceController {
+func NewNamespaceController(data func() map[string]string, kubeClient kube.Client, discoveryNamespaceFilter filter.DiscoveryNamespacesFilter) *NamespaceController {
 	c := &NamespaceController{
 		getData: data,
 		client:  kubeClient.CoreV1(),
 		queue:   queue.NewQueue(time.Second),
 	}
 
-	c.configMapInformer = kubeClient.KubeInformer().Core().V1().ConfigMaps().Informer()
+	c.configMapInformer = filter.NewFilteredSharedIndexInformer(discoveryNamespaceFilter.Filter, kubeClient.KubeInformer().Core().V1().ConfigMaps().Informer())
 	c.configmapLister = kubeClient.KubeInformer().Core().V1().ConfigMaps().Lister()
-	c.namespacesInformer = kubeClient.KubeInformer().Core().V1().Namespaces().Informer()
+	c.namespacesInformer = filter.NewFilteredSharedIndexInformer(discoveryNamespaceFilter.Filter, kubeClient.KubeInformer().Core().V1().Namespaces().Informer())
 	c.namespaceLister = kubeClient.KubeInformer().Core().V1().Namespaces().Lister()
 
 	c.configMapInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{

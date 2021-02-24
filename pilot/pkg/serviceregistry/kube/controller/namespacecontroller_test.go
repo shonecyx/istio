@@ -26,6 +26,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	listerv1 "k8s.io/client-go/listers/core/v1"
 
+	"istio.io/istio/pilot/pkg/serviceregistry/kube/controller/filter"
 	"istio.io/istio/pkg/kube"
 	"istio.io/istio/pkg/test/util/retry"
 	"istio.io/istio/security/pkg/k8s"
@@ -34,9 +35,12 @@ import (
 func TestNamespaceController(t *testing.T) {
 	client := kube.NewFakeClient()
 	testdata := map[string]string{"key": "value"}
+	nsInformer := client.KubeInformer().Core().V1().Namespaces()
+	discoveryNamespaceFilter := filter.NewDiscoveryNamespacesFilter(nsInformer.Lister(), []*metav1.LabelSelector{})
+
 	nc := NewNamespaceController(func() map[string]string {
 		return testdata
-	}, client)
+	}, client, discoveryNamespaceFilter)
 	nc.configmapLister = client.KubeInformer().Core().V1().ConfigMaps().Lister()
 	stop := make(chan struct{})
 	client.RunAndWait(stop)

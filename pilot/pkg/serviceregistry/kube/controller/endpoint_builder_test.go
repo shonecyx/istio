@@ -24,6 +24,7 @@ import (
 
 	"istio.io/api/label"
 	"istio.io/istio/pilot/pkg/model"
+	"istio.io/istio/pilot/pkg/serviceregistry/kube/controller/filter"
 	"istio.io/istio/pkg/config/labels"
 )
 
@@ -227,4 +228,8 @@ func (c testController) defaultNetwork() string {
 
 func (c testController) Cluster() string {
 	return c.cluster
+}
+
+func (c testController) DiscoveryNamespacesFilter() filter.DiscoveryNamespacesFilter {
+	return nil
 }

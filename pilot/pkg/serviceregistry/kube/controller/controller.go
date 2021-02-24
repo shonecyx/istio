@@ -194,6 +194,7 @@ type controllerInterface interface {
 	cidrRanger() cidranger.Ranger
 	defaultNetwork() string
 	Cluster() string
+	DiscoveryNamespacesFilter() filter.DiscoveryNamespacesFilter
 }
 
 var _ controllerInterface = &Controller{}
@@ -373,6 +374,10 @@ func (c *Controller) Provider() serviceregistry.ProviderID {
 
 func (c *Controller) Cluster() string {
 	return c.clusterID
+}
+
+func (c *Controller) DiscoveryNamespacesFilter() filter.DiscoveryNamespacesFilter {
+	return c.discoveryNamespacesFilter
 }
 
 func (c *Controller) cidrRanger() cidranger.Ranger {
