@@ -23,5 +23,11 @@ base:
   # For example: https://$remotePilotAddress:15017/validate
   validationURL: ""
 
+  validationWebhook:
+    # Refer to the [kubernetes LabelSelector API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.19/#labelselector-v1-meta)
+    namespaceSelector:
+      matchLabels: {}
+      matchExpressions: []
+
   # For istioctl usage to disable istio config crds in base
   enableIstioConfigCRDs: true

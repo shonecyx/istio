@@ -36,5 +36,10 @@ webhooks:
     failurePolicy: Ignore
     sideEffects: None
     admissionReviewVersions: ["v1beta1", "v1"]
+{{- if .Values.base.validationWebhook.namespaceSelector}}
+    namespaceSelector:
+{{ toYaml .Values.base.validationWebhook.namespaceSelector | indent 6 }}
+{{- end }}
+
 ---
 {{- end }}
