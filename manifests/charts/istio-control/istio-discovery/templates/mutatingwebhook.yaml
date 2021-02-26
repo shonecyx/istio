@@ -74,6 +74,10 @@ webhooks:
         {{ $key }}: "{{ $val }}"
         {{- end }}
       {{- end }}
+      {{- if .Values.sidecarInjectorWebhook.namespaceSelector.matchExpressions }}
+      matchExpressions:
+{{ toYaml .Values.sidecarInjectorWebhook.namespaceSelector.matchExpressions | indent 8 }}
+      {{- end }}
   {{- end }}
   {{- if .Values.sidecarInjectorWebhook.objectSelector.enabled }}
   objectSelector:

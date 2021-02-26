@@ -100,8 +100,10 @@ sidecarInjectorWebhook:
     enabled: true
     autoInject: true
 
+  # Refer to the [kubernetes LabelSelector API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.19/#labelselector-v1-meta)
   namespaceSelector:
     matchLabels: {}
+    matchExpressions: []
 
   rewriteAppHTTPProbe: true
 
