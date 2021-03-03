@@ -17,6 +17,7 @@ package filter
 import (
 	"sync"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -40,6 +41,8 @@ type DiscoveryNamespacesFilter interface {
 	NamespaceDeleted(ns metav1.ObjectMeta) (membershipChanged bool)
 	// return the namespaces selected for discovery
 	GetMembers() sets.String
+	// return true if namespace is selected for discovery
+	IsNamespaceSelected(ns *corev1.Namespace) bool
 }
 
 type discoveryNamespacesFilter struct {
@@ -166,6 +169,10 @@ func (d *discoveryNamespacesFilter) GetMembers() sets.String {
 	members := sets.NewString()
 	members.Insert(d.discoveryNamespaces.List()...)
 	return members
+}
+
+func (d *discoveryNamespacesFilter) IsNamespaceSelected(ns *corev1.Namespace) bool {
+	return d.isSelected(ns.Labels)
 }
 
 func (d *discoveryNamespacesFilter) addNamespace(ns string) {

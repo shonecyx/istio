@@ -49,7 +49,7 @@ type NamespaceController struct {
 	client  corev1.CoreV1Interface
 
 	queue              queue.Instance
-	namespacesInformer filter.FilteredSharedIndexInformer
+	namespacesInformer cache.SharedInformer
 	configMapInformer  filter.FilteredSharedIndexInformer
 	namespaceLister    listerv1.NamespaceLister
 	configmapLister    listerv1.ConfigMapLister
@@ -65,7 +65,13 @@ func NewNamespaceController(data func() map[string]string, kubeClient kube.Clien
 
 	c.configMapInformer = filter.NewFilteredSharedIndexInformer(discoveryNamespaceFilter.Filter, kubeClient.KubeInformer().Core().V1().ConfigMaps().Informer())
 	c.configmapLister = kubeClient.KubeInformer().Core().V1().ConfigMaps().Lister()
-	c.namespacesInformer = filter.NewFilteredSharedIndexInformer(discoveryNamespaceFilter.Filter, kubeClient.KubeInformer().Core().V1().Namespaces().Informer())
+	// Namespace controller shouldn't use discoveryNamespaceFilter to filter
+	// namespace event, because Namespace object doesn't have `namespace`
+	// attribute. And also, because discoveryNamespacesFilter is managed by
+	// kube controller, Namespace controller shouldn't rely on
+	// DiscoveryNamespacesFilter.Filter() to filter Namespace events, for
+	// avoiding concurrency issue between the two controllers.
+	c.namespacesInformer = kubeClient.KubeInformer().Core().V1().Namespaces().Informer()
 	c.namespaceLister = kubeClient.KubeInformer().Core().V1().Namespaces().Lister()
 
 	c.configMapInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -113,12 +119,21 @@ func NewNamespaceController(data func() map[string]string, kubeClient kube.Clien
 	c.namespacesInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			c.queue.Push(func() error {
-				return c.namespaceChange(obj.(*v1.Namespace))
+				ns := obj.(*v1.Namespace)
+				if discoveryNamespaceFilter.IsNamespaceSelected(ns) {
+					return c.namespaceChange(ns)
+				}
+				return nil
 			})
 		},
 		UpdateFunc: func(_, obj interface{}) {
 			c.queue.Push(func() error {
-				return c.namespaceChange(obj.(*v1.Namespace))
+				ns := obj.(*v1.Namespace)
+				if discoveryNamespaceFilter.IsNamespaceSelected(ns) {
+					return c.namespaceChange(ns)
+				}
+
+				return nil
 			})
 		},
 	})
