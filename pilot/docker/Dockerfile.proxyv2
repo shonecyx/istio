@@ -26,6 +26,7 @@ ARG SIDECAR=envoy
 # Copy Envoy bootstrap templates used by pilot-agent
 COPY envoy_bootstrap.json /var/lib/istio/envoy/envoy_bootstrap_tmpl.json
 COPY gcp_envoy_bootstrap.json /var/lib/istio/envoy/gcp_envoy_bootstrap_tmpl.json
+COPY raptor_envoy_bootstrap.json /var/lib/istio/envoy/raptor_envoy_bootstrap_tmpl.json
 
 # Add eBay Root CA
 COPY eBay_Root_CA.crt /usr/local/share/ca-certificates/eBay_Root_CA.crt
