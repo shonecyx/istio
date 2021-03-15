@@ -416,7 +416,7 @@ spec:
       {{ toYaml $value | indent 6 }}
       {{ end }}
       {{- end }}
-    - name: proxy-accesslogs
+    - name: {{ annotation .ObjectMeta `sidecar.istio.io/accesslogVolumeName` "proxy-accesslogs" }}
       mountPath: /var/log/proxy
   volumes:
   {{- if (isset .ObjectMeta.Annotations `sidecar.istio.io/bootstrapOverride`) }}
@@ -486,8 +486,10 @@ spec:
       optional: true
       secretName: lightstep.cacert
   {{- end }}
+  {{- if not (isset .ObjectMeta.Annotations `sidecar.istio.io/accesslogVolumeName`) }}
   - name: proxy-accesslogs
     emptyDir: {}
+  {{- end }}
   {{- if .Values.global.imagePullSecrets }}
   imagePullSecrets:
     {{- range .Values.global.imagePullSecrets }}
