@@ -418,6 +418,21 @@ spec:
       {{- end }}
     - name: {{ annotation .ObjectMeta `sidecar.istio.io/accesslogVolumeName` "proxy-accesslogs" }}
       mountPath: /var/log/proxy
+  {{- if .Values.global.proxy.logRotation.enable }}
+  - image: "{{ .Values.global.proxy.logRotation.image }}"
+    imagePullPolicy: "{{ valueOrDefault .Values.global.imagePullPolicy `Always` }}"
+    name: logrotater
+    resources:
+      limits:
+        cpu: 20m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 10Mi
+    volumeMounts:
+    - mountPath: /var/log/proxy
+      name: {{ annotation .ObjectMeta `sidecar.istio.io/accesslogVolumeName` "proxy-accesslogs" }}
+  {{ end }}
   volumes:
   {{- if (isset .ObjectMeta.Annotations `sidecar.istio.io/bootstrapOverride`) }}
   - name: custom-bootstrap-volume
