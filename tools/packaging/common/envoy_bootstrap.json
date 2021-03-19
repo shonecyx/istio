@@ -80,6 +80,13 @@
         "regex": "^listener\\.(((?:[_.[:digit:]]*|[_\\[\\]aAbBcCdDeEfF[:digit:]]*))\\.)"
       },
       {
+        "tag_name": "ssl_cipher",
+        "regex": "^listener(?=\\.).*?\\.ssl\\.ciphers(\\.(.*?))$"
+      },
+      {
+        "tag_name": "cipher_suite"
+      },
+      {
         "tag_name": "mongo_prefix",
         "regex": "^mongo\\.(.+?)\\.(collection|cmd|cx_|op_|delays_|decoding_)(.*?)$"
       },
