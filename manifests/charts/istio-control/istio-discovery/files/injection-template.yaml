@@ -429,6 +429,10 @@ spec:
       requests:
         cpu: 10m
         memory: 10Mi
+    securityContext:
+      runAsGroup: 1337
+      runAsNonRoot: true
+      runAsUser: 1337
     volumeMounts:
     - mountPath: /var/log/proxy
       name: {{ annotation .ObjectMeta `sidecar.istio.io/accesslogVolumeName` "proxy-accesslogs" }}
