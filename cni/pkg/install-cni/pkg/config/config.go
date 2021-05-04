@@ -41,7 +41,9 @@ type Config struct {
 	K8sNodeName        string
 
 	UpdateCNIBinaries bool
-	SkipCNIBinaries   []string
+
+	// The names of binaries to skip when copying
+	SkipCNIBinaries []string
 }
 
 func (c *Config) String() string {
