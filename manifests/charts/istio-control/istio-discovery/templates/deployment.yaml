@@ -163,6 +163,10 @@ spec:
           - name: MICROVAULT_ADDRESS
             value: "localhost:10000"
 {{- end }}
+{{- if .Values.pilot.singleInstanceAccess.enabled }}
+          - name: PILOT_ENABLE_SINGLE_INSTANCE_ACCESS
+            value: "true"
+{{- end }}
           resources:
 {{- if .Values.pilot.resources }}
 {{ toYaml .Values.pilot.resources | trim | indent 12 }}

@@ -1,0 +1,43 @@
+{{- if .Values.pilot.singleInstanceAccess.enabled }}
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: header-to-metadata-1.8
+  {{- if .Values.meshConfig.rootNamespace }}
+  namespace: {{ .Values.meshConfig.rootNamespace }}
+  {{- else }}
+  namespace: {{ .Release.Namespace }}
+  {{- end }}
+  labels:
+    istio.io/rev: {{ .Values.revision | default "default" }}
+    install.operator.istio.io/owning-resource: {{ .Values.ownerName | default "unknown" }}
+    operator.istio.io/component: "Pilot"
+spec:
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: GATEWAY
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.http_connection_manager"
+            subFilter:
+              name: "envoy.router"
+      proxy:
+        proxyVersion: '^1\.8.*'
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.header_to_metadata
+        typed_config:
+          "@type": "type.googleapis.com/envoy.extensions.filters.http.header_to_metadata.v3.Config"
+          request_rules:
+          - header: {{ .Values.pilot.singleInstanceAccess.header | default "istio.workload.endpoint" }}
+            on_header_present:
+              metadata_namespace: envoy.lb
+              key: endpoint-ip
+              type: STRING
+            remove: false
+
+---
+{{- end }}

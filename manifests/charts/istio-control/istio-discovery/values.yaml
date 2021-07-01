@@ -72,6 +72,12 @@ pilot:
   # mount optional Secret istio-kubeconfig
   mountIstioKubeconfig: false
 
+  # single instance access support
+  singleInstanceAccess:
+    enabled: false
+    # The header name which used to specify destination instance.
+    header: "istio.workload.endpoint"
+
 sidecarInjectorWebhook:
   # If enabled, the legacy webhook selection logic will be used. This relies on filtering of webhook
   # requests in Istiod, rather than at the webhook selection level.
