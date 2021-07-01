@@ -138,6 +138,19 @@ func (configgen *ConfigGeneratorImpl) buildOutboundClusters(cb *ClusterBuilder, 
 				defaultCluster.cluster.AltStatName = util.BuildStatPrefix(cb.push.Mesh.OutboundClusterStatName, string(service.Hostname), "", port, service.Attributes)
 			}
 
+			if features.EnableSingleInstanceAccess {
+				lbSubsetSelectors := make([]*cluster.Cluster_LbSubsetConfig_LbSubsetSelector, 0)
+				lbSubsetSelectors = append(lbSubsetSelectors, &cluster.Cluster_LbSubsetConfig_LbSubsetSelector{
+					Keys:                []string{util.EnvoyEndpointIPKey},
+					SingleHostPerSubset: true,
+				})
+
+				defaultCluster.cluster.LbSubsetConfig = &cluster.Cluster_LbSubsetConfig{
+					FallbackPolicy:  cluster.Cluster_LbSubsetConfig_NO_FALLBACK,
+					SubsetSelectors: lbSubsetSelectors,
+				}
+			}
+
 			cb.setUpstreamProtocol(cb.proxy, defaultCluster, port, model.TrafficDirectionOutbound)
 
 			subsetClusters := cb.applyDestinationRule(defaultCluster, DefaultClusterMode, service, port, networkView)

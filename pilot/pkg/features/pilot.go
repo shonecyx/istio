@@ -452,6 +452,11 @@ var (
 
 	MicroVaultAddress = env.RegisterStringVar("MICROVAULT_ADDRESS", "localhost:10000",
 		"The Microvault sidecar gRPC address").Get()
+
+	EnableSingleInstanceAccess = env.RegisterBoolVar("PILOT_ENABLE_SINGLE_INSTANCE_ACCESS", false,
+		"If enabled, Istiod will generate Subset Load Balancing config for outbound cluster "+
+			"and related metadata for endpoints. Then ingress HTTP request can use header 'istio.workload.endpoint' to "+
+			"specify the destination instance. The header's value is the instance's IP address").Get()
 )
 
 // UnsafeFeaturesEnabled returns true if any unsafe features are enabled.

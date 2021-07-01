@@ -25,6 +25,7 @@ import (
 	"github.com/golang/protobuf/ptypes/wrappers"
 
 	networkingapi "istio.io/api/networking/v1alpha3"
+	"istio.io/istio/pilot/pkg/features"
 	"istio.io/istio/pilot/pkg/model"
 	"istio.io/istio/pilot/pkg/networking"
 	"istio.io/istio/pilot/pkg/networking/util"
@@ -394,6 +395,9 @@ func buildEnvoyLbEndpoint(e *model.IstioEndpoint) *endpoint.LbEndpoint {
 	// Do not removepilot/pkg/xds/fake.go
 	ep.Metadata = util.BuildLbEndpointMetadata(e.Network, e.TLSMode, e.WorkloadName, e.Namespace, e.Locality.ClusterID, e.Labels)
 
+	if features.EnableSingleInstanceAccess {
+		util.AddEnvoyLBMetadata(ep.Metadata, e.Address)
+	}
 	return ep
 }
 

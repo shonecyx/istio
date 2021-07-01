@@ -84,6 +84,12 @@ const (
 	// which determines the endpoint level transport socket configuration.
 	EnvoyTransportSocketMetadataKey = "envoy.transport_socket_match"
 
+	EnvoyLBMetadataKey = "envoy.lb"
+
+	// Metadata key in Envoy endpoint's metadata namespace envoy.lb
+	// Currently, this metadata is added to EDS endpoints globally.
+	EnvoyEndpointIPKey = "endpoint-ip"
+
 	// EnvoyRawBufferSocketName matched with hardcoded built-in Envoy transport name which determines
 	// endpoint level plantext transport socket configuration
 	EnvoyRawBufferSocketName = wellknown.TransportSocketRawBuffer
@@ -556,6 +562,20 @@ func BuildLbEndpointMetadata(network, tlsMode, workloadname, namespace, clusterI
 	}
 
 	return metadata
+}
+
+func AddEnvoyLBMetadata(metadata *core.Metadata, address string) {
+	if address == "" {
+		return
+	}
+
+	if _, ok := metadata.FilterMetadata[EnvoyLBMetadataKey]; !ok {
+		metadata.FilterMetadata[EnvoyLBMetadataKey] = &pstruct.Struct{
+			Fields: map[string]*pstruct.Value{},
+		}
+	}
+
+	metadata.FilterMetadata[EnvoyLBMetadataKey].Fields[EnvoyEndpointIPKey] = &pstruct.Value{Kind: &pstruct.Value_StringValue{StringValue: address}}
 }
 
 func addIstioEndpointLabel(metadata *core.Metadata, key string, val *pstruct.Value) {
