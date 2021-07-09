@@ -141,12 +141,12 @@ func (configgen *ConfigGeneratorImpl) buildOutboundClusters(cb *ClusterBuilder, 
 			if features.EnableSingleInstanceAccess {
 				lbSubsetSelectors := make([]*cluster.Cluster_LbSubsetConfig_LbSubsetSelector, 0)
 				lbSubsetSelectors = append(lbSubsetSelectors, &cluster.Cluster_LbSubsetConfig_LbSubsetSelector{
-					Keys:                []string{util.EnvoyEndpointIPKey},
-					SingleHostPerSubset: true,
+					Keys:           []string{util.EnvoyEndpointIPKey},
+					FallbackPolicy: cluster.Cluster_LbSubsetConfig_LbSubsetSelector_NO_FALLBACK,
 				})
 
 				defaultCluster.cluster.LbSubsetConfig = &cluster.Cluster_LbSubsetConfig{
-					FallbackPolicy:  cluster.Cluster_LbSubsetConfig_NO_FALLBACK,
+					FallbackPolicy:  cluster.Cluster_LbSubsetConfig_ANY_ENDPOINT,
 					SubsetSelectors: lbSubsetSelectors,
 				}
 			}
