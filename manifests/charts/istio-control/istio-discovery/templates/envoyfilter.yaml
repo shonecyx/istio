@@ -31,13 +31,38 @@ spec:
         name: envoy.filters.http.header_to_metadata
         typed_config:
           "@type": "type.googleapis.com/envoy.extensions.filters.http.header_to_metadata.v3.Config"
-          request_rules:
-          - header: {{ .Values.pilot.singleInstanceAccess.header | default "istio.workload.endpoint" }}
-            on_header_present:
-              metadata_namespace: envoy.lb
-              key: endpoint-ip
-              type: STRING
-            remove: false
+  - applyTo: HTTP_ROUTE
+    match:
+      context: GATEWAY
+      proxy:
+        proxyVersion: ^1\.8.*
+      routeConfiguration:
+        vhost:
+          route:
+            name: instance-access
+    patch:
+      operation: MERGE
+      value:
+        route:
+          regex_rewrite:
+            pattern:
+              google_re2: {}
+              regex: "^(/instance-access/[^/]+)(/.*)$"
+            substitution: "\\2"   # remove  "/instance-access/{ip}" from :path
+        typed_per_filter_config:
+          envoy.filters.http.header_to_metadata:
+            "@type": "type.googleapis.com/envoy.extensions.filters.http.header_to_metadata.v3.Config"
+            request_rules:
+            - header: ":path" # /instance/172.17.0.3/xxxxx
+              on_header_present:
+                metadata_namespace: envoy.lb
+                key: endpoint-ip
+                regex_value_rewrite:
+                  pattern:
+                    google_re2: {}
+                    regex: "^(/instance-access/([^/]*))/?.*$"
+                  substitution: "\\2"
+              remove: false
 
 ---
 {{- end }}
