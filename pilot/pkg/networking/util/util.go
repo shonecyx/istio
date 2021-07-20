@@ -565,6 +565,10 @@ func BuildLbEndpointMetadata(network, tlsMode, workloadname, namespace, clusterI
 }
 
 func AddEnvoyLBMetadata(metadata *core.Metadata, address string) {
+	if metadata == nil {
+		return
+	}
+
 	if address == "" {
 		return
 	}
