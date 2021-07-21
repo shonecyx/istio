@@ -27,6 +27,10 @@ ARG SIDECAR=envoy
 COPY envoy_bootstrap.json /var/lib/istio/envoy/envoy_bootstrap_tmpl.json
 COPY gcp_envoy_bootstrap.json /var/lib/istio/envoy/gcp_envoy_bootstrap_tmpl.json
 
+# Add eBay Root CA
+COPY eBay_Root_CA.crt /usr/local/share/ca-certificates/eBay_Root_CA.crt
+RUN chown istio-proxy /usr/local/share/ca-certificates/eBay_Root_CA.crt && update-ca-certificates
+
 # Install Envoy.
 COPY $SIDECAR /usr/local/bin/$SIDECAR
 
