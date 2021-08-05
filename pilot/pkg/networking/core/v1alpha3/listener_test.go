@@ -2138,7 +2138,7 @@ func verifyInboundHTTPListenerServerName(t *testing.T, l *listener.Listener) {
 		t.Fatalf("expected %d filters, found %d", 1, len(fc.Filters))
 	}
 	f := fc.Filters[0]
-	expectedServerName := "istio-envoy"
+	expectedServerName := "ebay server"
 	cfg, _ := conversion.MessageToStruct(f.GetTypedConfig())
 	serverName := cfg.Fields["server_name"].GetStringValue()
 	if serverName != expectedServerName {

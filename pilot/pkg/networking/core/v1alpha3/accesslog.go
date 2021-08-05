@@ -56,7 +56,7 @@ const (
 		"%DOWNSTREAM_REMOTE_ADDRESS% %REQUESTED_SERVER_NAME% %ROUTE_NAME%\n"
 
 	// EnvoyServerName for istio's envoy
-	EnvoyServerName = "istio-envoy"
+	EnvoyServerName = "ebay server"
 
 	httpEnvoyAccessLogFriendlyName     = "http_envoy_accesslog"
 	tcpEnvoyAccessLogFriendlyName      = "tcp_envoy_accesslog"
