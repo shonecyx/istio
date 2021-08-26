@@ -475,6 +475,78 @@ func TestBuildGatewayClustersWithRingHashLb(t *testing.T) {
 	}
 }
 
+func TestBuildOutboundClustersWithSingleInstanceAccess(t *testing.T) {
+	cases := []struct {
+		name                 string
+		serviceResolution    model.Resolution
+		nodeType             model.NodeType
+		expectLbSubsetConfig bool
+		expectLbPolicy       cluster.Cluster_LbPolicy
+	}{
+		{
+			name:                 "gateway outbound eds",
+			nodeType:             model.Router,
+			expectLbSubsetConfig: true,
+			expectLbPolicy:       cluster.Cluster_ROUND_ROBIN,
+		},
+		// no "gateway outbound original_dst" case, because gateway cannot use
+		// passthrough clusters, they will fallback to EDS
+		// see convertResolution() in pilot/pkg/networking/core/v1alpha3/cluster.go
+		{
+			name:                 "sidecar outbound eds",
+			nodeType:             model.SidecarProxy,
+			expectLbSubsetConfig: false,
+			expectLbPolicy:       cluster.Cluster_ROUND_ROBIN,
+		},
+		{
+			name:                 "sidecar outbound original_dst",
+			serviceResolution:    model.Passthrough,
+			nodeType:             model.SidecarProxy,
+			expectLbSubsetConfig: false,
+			expectLbPolicy:       cluster.Cluster_CLUSTER_PROVIDED,
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+
+			gwClusters := features.FilterGatewayClusterConfig
+			features.FilterGatewayClusterConfig = false
+			defer func() { features.FilterGatewayClusterConfig = gwClusters }()
+
+			enableSingleInstanceAccess := features.EnableSingleInstanceAccess
+			features.EnableSingleInstanceAccess = true
+			defer func() { features.EnableSingleInstanceAccess = enableSingleInstanceAccess }()
+
+			c := xdstest.ExtractCluster("outbound|8080||*.example.org",
+				buildTestClusters(clusterTest{
+					t:                 t,
+					serviceHostname:   "*.example.org",
+					serviceResolution: tt.serviceResolution,
+					nodeType:          tt.nodeType,
+					mesh:              testMesh,
+					destRule: &networking.DestinationRule{
+						Host: "*.example.org",
+						TrafficPolicy: &networking.TrafficPolicy{
+							LoadBalancer: &networking.LoadBalancerSettings{
+								LbPolicy: &networking.LoadBalancerSettings_Simple{
+									Simple: networking.LoadBalancerSettings_ROUND_ROBIN,
+								},
+							},
+						},
+					}}))
+
+			g.Expect(c.LbPolicy).To(Equal(tt.expectLbPolicy))
+			if tt.expectLbSubsetConfig {
+				g.Expect(c.LbSubsetConfig).ToNot(BeNil())
+			} else {
+				g.Expect(c.LbSubsetConfig).To(BeNil())
+			}
+
+		})
+	}
+}
+
 func withClusterLocalHosts(m meshconfig.MeshConfig, hosts ...string) meshconfig.MeshConfig { // nolint:interfacer
 	m.ServiceSettings = append(append(make([]*meshconfig.MeshConfig_ServiceSettings, 0), m.ServiceSettings...),
 		&meshconfig.MeshConfig_ServiceSettings{

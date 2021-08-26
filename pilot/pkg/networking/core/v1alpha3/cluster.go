@@ -138,22 +138,24 @@ func (configgen *ConfigGeneratorImpl) buildOutboundClusters(cb *ClusterBuilder, 
 				defaultCluster.cluster.AltStatName = util.BuildStatPrefix(cb.push.Mesh.OutboundClusterStatName, string(service.Hostname), "", port, service.Attributes)
 			}
 
-			if features.EnableSingleInstanceAccess {
+			cb.setUpstreamProtocol(cb.proxy, defaultCluster, port, model.TrafficDirectionOutbound)
+
+			subsetClusters := cb.applyDestinationRule(defaultCluster, DefaultClusterMode, service, port, networkView)
+
+			if features.EnableSingleInstanceAccess && cb.proxy.Type == model.Router && defaultCluster.cluster.LbPolicy != cluster.Cluster_CLUSTER_PROVIDED {
 				lbSubsetSelectors := make([]*cluster.Cluster_LbSubsetConfig_LbSubsetSelector, 0)
 				lbSubsetSelectors = append(lbSubsetSelectors, &cluster.Cluster_LbSubsetConfig_LbSubsetSelector{
 					Keys:           []string{util.EnvoyEndpointIPKey},
 					FallbackPolicy: cluster.Cluster_LbSubsetConfig_LbSubsetSelector_NO_FALLBACK,
 				})
 
+				// only default cluster has LB subset config, it has all backend endpoints, so it's necessary to
+				// use a subset cluster to access single instance.
 				defaultCluster.cluster.LbSubsetConfig = &cluster.Cluster_LbSubsetConfig{
 					FallbackPolicy:  cluster.Cluster_LbSubsetConfig_ANY_ENDPOINT,
 					SubsetSelectors: lbSubsetSelectors,
 				}
 			}
-
-			cb.setUpstreamProtocol(cb.proxy, defaultCluster, port, model.TrafficDirectionOutbound)
-
-			subsetClusters := cb.applyDestinationRule(defaultCluster, DefaultClusterMode, service, port, networkView)
 
 			clusters = cp.conditionallyAppend(clusters, nil, defaultCluster.build())
 			clusters = cp.conditionallyAppend(clusters, nil, subsetClusters...)
