@@ -1,6 +1,6 @@
 ARG BASE_VERSION=latest
 
-FROM gcr.io/istio-release/base:${BASE_VERSION}
+FROM hub.tess.io/istio/base:${BASE_VERSION}
 
 COPY client /usr/local/bin/client
 COPY server /usr/local/bin/server

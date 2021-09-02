@@ -41,6 +41,8 @@ read -ra DOCKER_RUN_OPTIONS <<< "${DOCKER_RUN_OPTIONS:-}"
 
 [[ -t 1 ]] && DOCKER_RUN_OPTIONS+=("-it")
 
+ENV_VARS='-e GIT_USER='$GIT_USER' -e GIT_TOKEN='$GIT_TOKEN
+
 # $CONTAINER_OPTIONS becomes an empty arg when quoted, so SC2086 is disabled for the
 # following command only
 # shellcheck disable=SC2086
@@ -55,6 +57,7 @@ read -ra DOCKER_RUN_OPTIONS <<< "${DOCKER_RUN_OPTIONS:-}"
     --env-file <(env | grep -v ${ENV_BLOCKLIST}) \
     -e IN_BUILD_CONTAINER=1 \
     -e TZ="${TIMEZONE:-$TZ}" \
+    ${ENV_VARS} \
     --mount "type=bind,source=${MOUNT_SOURCE},destination=/work,consistency=cached" \
     --mount "type=volume,source=go,destination=/go,consistency=cached" \
     --mount "type=volume,source=gocache,destination=/gocache,consistency=cached" \

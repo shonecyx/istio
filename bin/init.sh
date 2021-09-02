@@ -17,6 +17,7 @@
 # Init script downloads or updates envoy and the go dependencies. Called from Makefile, which sets
 # the needed environment variables.
 
+set -x
 set -o errexit
 set -o nounset
 set -o pipefail
@@ -55,6 +56,17 @@ function set_download_command () {
   exit 1
 }
 
+GITHUB_RELEASE_COMMAND=""
+function set_github_release_command() {
+  if ! command -v github-release ; then
+      echo "Install github-release"
+      go get github.com/aktau/github-release
+      echo github-release is installed at: `command -v github-release`
+  fi
+
+  GITHUB_RELEASE_COMMAND='github-release'
+}
+
 # Downloads and extract an Envoy binary if the artifact doesn't already exist.
 # Params:
 #   $1: The URL of the Envoy tar.gz to be downloaded.
@@ -79,6 +91,40 @@ function download_envoy_if_necessary () {
     # Make a copy named just "envoy" in the same directory (overwrite if necessary).
     echo "Copying $2 to $(dirname "$2")/${3}"
     cp -f "$2" "$(dirname "$2")/${3}"
+    popd
+  fi
+}
+
+# Downloads and extract an Envoy binary if the artifact doesn't already exist.
+# Params:
+#   $1: The URL of the Envoy tar.gz to be downloaded.
+#   $2: The full path of the output binary.
+function github_release_download_envoy_if_necessary () {
+  if [[ ! -f "$2" ]] ; then
+    # Enter the output directory.
+    mkdir -p "$(dirname "$2")"
+    pushd "$(dirname "$2")"
+
+    # Download and extract the binary to the output directory.
+    echo "Downloading Envoy: ${GITHUB_RELEASE_COMMAND} $1 to $2"
+    tarball=${1##*/}
+    # must pipeline github-release to tar here, otherwise it can't work in
+    # CI job, because it will output downloaded content to stdout.
+    # see https://github.com/aktau/github-release/blob/v0.7.2/cmd.go#L229
+    ${GITHUB_RELEASE_COMMAND} download \
+      --user ebayistio --repo proxy \
+      --tag commit-$ISTIO_ENVOY_VERSION \
+      --name "$tarball"  | tar xz
+
+    # Copy the extracted binary to the output location
+    cp usr/local/bin/envoy "$2"
+
+    # Remove the extracted binary.
+    rm -rf usr $tarball
+
+    # Make a copy named just "envoy" in the same directory (overwrite if necessary).
+    echo "Copying $2 to $(dirname "$2")/envoy"
+    cp -f "$2" "$(dirname "$2")/envoy"
     popd
   fi
 }
@@ -110,25 +156,56 @@ function download_wasm_if_necessary () {
   fi
 }
 
+# Downloads WebAssembly based plugin if it doesn't already exist.
+# Params:
+#   $1: The URL of the WebAssembly file to be downloaded.
+#   $2: The full path of the output file.
+function github_release_download_wasm_if_necessary () {
+  download_file_dir="$(dirname "$2")"
+  download_file_name="$(basename "$1")"
+  download_file_path="${download_file_dir}/${download_file_name}"
+  if [[ ! -f "${download_file_path}" ]] ; then
+    # Enter the output directory.
+    mkdir -p "${download_file_dir}"
+    pushd "${download_file_dir}"
+
+    # Download the WebAssembly plugin files to the output directory.
+    echo "Downloading WebAssembly file: ${GITHUB_RELEASE_COMMAND} $1 to ${download_file_path}"
+
+    wasm_file=${download_file_name##*/}
+    ${GITHUB_RELEASE_COMMAND} download \
+      --user ebayistio --repo proxy \
+      --tag commit-$ISTIO_ENVOY_VERSION \
+      --name "$wasm_file" > $wasm_file
+
+    # Copy the webassembly file to the output location
+    cp "${download_file_path}" "$2"
+    popd
+  fi
+}
+
 mkdir -p "${ISTIO_OUT}"
 
 # Set the value of DOWNLOAD_COMMAND (either curl or wget)
 set_download_command
 
+# Set the value of GITHUB_RELEASE_COMMAND
+set_github_release_command
+
 if [[ -n "${DEBUG_IMAGE:-}" ]]; then
   # Download and extract the Envoy linux debug binary.
-  download_envoy_if_necessary "${ISTIO_ENVOY_LINUX_DEBUG_URL}" "$ISTIO_ENVOY_LINUX_DEBUG_PATH" "${SIDECAR}"
+  github_release_download_envoy_if_necessary "${ISTIO_ENVOY_LINUX_DEBUG_URL}" "$ISTIO_ENVOY_LINUX_DEBUG_PATH"
 else
   echo "Skipping envoy debug. Set DEBUG_IMAGE to download."
 fi
 
 # Download and extract the Envoy linux release binary.
-download_envoy_if_necessary "${ISTIO_ENVOY_LINUX_RELEASE_URL}" "$ISTIO_ENVOY_LINUX_RELEASE_PATH" "${SIDECAR}"
-download_envoy_if_necessary "${ISTIO_ENVOY_CENTOS_RELEASE_URL}" "$ISTIO_ENVOY_CENTOS_LINUX_RELEASE_PATH" "${SIDECAR}-centos"
+github_release_download_envoy_if_necessary "${ISTIO_ENVOY_LINUX_RELEASE_URL}" "$ISTIO_ENVOY_LINUX_RELEASE_PATH"
+# github_release_download_envoy_if_necessary "${ISTIO_ENVOY_CENTOS_RELEASE_URL}" "$ISTIO_ENVOY_CENTOS_LINUX_RELEASE_PATH"
 
 if [[ "$GOOS_LOCAL" == "darwin" ]]; then
   # Download and extract the Envoy macOS release binary
-  download_envoy_if_necessary "${ISTIO_ENVOY_MACOS_RELEASE_URL}" "$ISTIO_ENVOY_MACOS_RELEASE_PATH" "${SIDECAR}"
+  github_release_download_envoy_if_necessary "${ISTIO_ENVOY_MACOS_RELEASE_URL}" "$ISTIO_ENVOY_MACOS_RELEASE_PATH"
   ISTIO_ENVOY_NATIVE_PATH=${ISTIO_ENVOY_MACOS_RELEASE_PATH}
 else
   ISTIO_ENVOY_NATIVE_PATH=${ISTIO_ENVOY_LINUX_RELEASE_PATH}
@@ -138,19 +215,20 @@ fi
 WASM_RELEASE_DIR=${ISTIO_ENVOY_LINUX_RELEASE_DIR}
 for plugin in stats metadata_exchange
 do
-  FILTER_WASM_URL="${ISTIO_ENVOY_BASE_URL}/${plugin}-${ISTIO_ENVOY_VERSION}.wasm"
-  download_wasm_if_necessary "${FILTER_WASM_URL}" "${WASM_RELEASE_DIR}"/"${plugin//_/-}"-filter.wasm
-  FILTER_WASM_URL="${ISTIO_ENVOY_BASE_URL}/${plugin}-${ISTIO_ENVOY_VERSION}.compiled.wasm"
-  download_wasm_if_necessary "${FILTER_WASM_URL}" "${WASM_RELEASE_DIR}"/"${plugin//_/-}"-filter.compiled.wasm
+  FILTER_WASM_URL="${plugin}-${ISTIO_ENVOY_VERSION}.wasm"
+  github_release_download_wasm_if_necessary "${FILTER_WASM_URL}" "${WASM_RELEASE_DIR}"/"${plugin//_/-}"-filter.wasm
+  FILTER_WASM_URL="${plugin}-${ISTIO_ENVOY_VERSION}.compiled.wasm"
+  github_release_download_wasm_if_necessary "${FILTER_WASM_URL}" "${WASM_RELEASE_DIR}"/"${plugin//_/-}"-filter.compiled.wasm
 done
 
 # Copy native envoy binary to ISTIO_OUT
 echo "Copying ${ISTIO_ENVOY_NATIVE_PATH} to ${ISTIO_OUT}/${SIDECAR}"
 cp -f "${ISTIO_ENVOY_NATIVE_PATH}" "${ISTIO_OUT}/${SIDECAR}"
 
+# Skip centos envoy binaries and compilation
 # Copy CentOS binary
-echo "Copying ${ISTIO_ENVOY_CENTOS_LINUX_RELEASE_PATH} to ${ISTIO_OUT_LINUX}/${SIDECAR}-centos"
-cp -f "${ISTIO_ENVOY_CENTOS_LINUX_RELEASE_PATH}" "${ISTIO_OUT_LINUX}/${SIDECAR}-centos"
+# echo "Copying ${ISTIO_ENVOY_CENTOS_LINUX_RELEASE_PATH} to ${ISTIO_OUT_LINUX}/${SIDECAR}-centos"
+# cp -f "${ISTIO_ENVOY_CENTOS_LINUX_RELEASE_PATH}" "${ISTIO_OUT_LINUX}/${SIDECAR}-centos"
 
 # Copy the envoy binary to ISTIO_OUT_LINUX if the local OS is not Linux
 if [[ "$GOOS_LOCAL" != "linux" ]]; then
