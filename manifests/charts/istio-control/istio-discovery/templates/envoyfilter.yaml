@@ -2,7 +2,7 @@
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
-  name: header-to-metadata-1.8
+  name: header-to-metadata-1.10
   {{- if .Values.meshConfig.rootNamespace }}
   namespace: {{ .Values.meshConfig.rootNamespace }}
   {{- else }}
@@ -24,7 +24,7 @@ spec:
             subFilter:
               name: "envoy.router"
       proxy:
-        proxyVersion: '^1\.8.*'
+        proxyVersion: '^1\.10.*'
     patch:
       operation: INSERT_BEFORE
       value:
@@ -35,7 +35,7 @@ spec:
     match:
       context: GATEWAY
       proxy:
-        proxyVersion: ^1\.8.*
+        proxyVersion: ^1\.10.*
       routeConfiguration:
         vhost:
           route:
