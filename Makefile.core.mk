@@ -25,6 +25,7 @@ export VERSION ?= 1.10-dev
 BASE_VERSION ?= 1.10-dev.9
 
 export GO111MODULE ?= on
+export GOPRIVATE ?= tess.io
 export GOPROXY ?= https://proxy.golang.org
 export GOSUMDB ?= sum.golang.org
 export GOPRIVATE ?= tess.io

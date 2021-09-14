@@ -31,7 +31,9 @@ import (
 	authorizationv1client "k8s.io/client-go/kubernetes/typed/authorization/v1"
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
+	"tess.io/ebayistio/cert-control-plane/pkg/provider"
 
+	"istio.io/istio/pilot/pkg/features"
 	"istio.io/istio/pilot/pkg/secrets"
 	"istio.io/istio/pkg/kube"
 	"istio.io/pkg/log"
@@ -65,6 +67,7 @@ type SecretsController struct {
 
 	mu                 sync.RWMutex
 	authorizationCache map[authorizationKey]authorizationResponse
+	protego            *provider.Protego
 }
 
 type authorizationKey string
@@ -81,6 +84,15 @@ type RemoteKubeClientGetter func(clusterID string) kubernetes.Interface
 func NewSecretsController(client kube.Client, clusterID string) *SecretsController {
 	// Informer is lazy loaded, load it now
 	_ = client.KubeInformer().Core().V1().Secrets().Informer()
+	var p *provider.Protego = nil
+	if features.ProtegoCert {
+		var err error
+		microVaultAddress := features.MicroVaultAddress
+		p, err = provider.NewProtego(&microVaultAddress, client.KubeInformer().Core().V1().Secrets())
+		if err != nil {
+			log.Fatalf("Initialize protego failure: %v", err)
+		}
+	}
 
 	return &SecretsController{
 		secrets: client.KubeInformer().Core().V1().Secrets(),
@@ -88,6 +100,7 @@ func NewSecretsController(client kube.Client, clusterID string) *SecretsControll
 		sar:                client.AuthorizationV1().SubjectAccessReviews(),
 		clusterID:          clusterID,
 		authorizationCache: make(map[authorizationKey]authorizationResponse),
+		protego:            p,
 	}
 }
 
@@ -179,6 +192,14 @@ func (s *SecretsController) Authorize(serviceAccount, namespace string) error {
 }
 
 func (s *SecretsController) GetKeyAndCert(name, namespace string) (key []byte, cert []byte) {
+	if features.ProtegoCert && s.protego != nil {
+		key, cert, err := s.protego.GetCertBySecretName(name, namespace)
+		if err != nil {
+			log.Errorf("get key cert failed: %v", err)
+			return nil, nil
+		}
+		return key, cert
+	}
 	k8sSecret, err := s.secrets.Lister().Secrets(namespace).Get(name)
 	if err != nil {
 		return nil, nil

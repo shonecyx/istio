@@ -112,4 +112,5 @@ require (
 	sigs.k8s.io/yaml v1.2.0
 	tess.io/ebay/api v0.0.0-20210107212451-7f60fa007372
 	tess.io/ebay/client-go v0.0.0-20210107213546-e80ba028f669
+	tess.io/ebayistio/cert-control-plane v0.0.0-20210209041238-53db253f7d62
 )

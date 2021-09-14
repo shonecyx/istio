@@ -446,6 +446,12 @@ var (
 	EnableTessCustomStats = env.RegisterBoolVar("PILOT_ENABLE_TESS_CUSTOM_STATS", false,
 		"If enabled, Istiod will access Tess resources to generate customized Cluster stat. "+
 			"This can be disabled for developing non-Tess related features.").Get()
+
+	ProtegoCert = env.RegisterBoolVar("PILOT_ENABLE_PROTEGO_CERT", false,
+		"If enabled, istiod can recognize 'protego.io/cert' secret and read cert/key from microvault sidecar. ").Get()
+
+	MicroVaultAddress = env.RegisterStringVar("MICROVAULT_ADDRESS", "localhost:10000",
+		"The Microvault sidecar gRPC address").Get()
 )
 
 // UnsafeFeaturesEnabled returns true if any unsafe features are enabled.

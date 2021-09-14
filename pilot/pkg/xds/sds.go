@@ -95,9 +95,12 @@ func needsUpdate(proxy *model.Proxy, updates model.XdsUpdates) bool {
 
 // Currently only same namespace is allowed. In the future this will be expanded.
 func (s *SecretGen) proxyAuthorizedForSecret(proxy *model.Proxy, sr SecretResource) error {
-	if proxy.ConfigNamespace != sr.Namespace {
-		return fmt.Errorf("SDS is currently only supporting accessing secret within the same namespace. Secret namespace %q does not match proxy namespace %q",
-			sr.Namespace, proxy.ConfigNamespace)
+	if !features.ProtegoCert {
+		// when protego cert feature is turned on, this constrain has to be removed.
+		if proxy.ConfigNamespace != sr.Namespace {
+			return fmt.Errorf("SDS is currently only supporting accessing secret within the same namespace. Secret namespace %q does not match proxy namespace %q",
+				sr.Namespace, proxy.ConfigNamespace)
+		}
 	}
 	return nil
 }

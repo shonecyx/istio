@@ -53,6 +53,11 @@ spec:
         {{- if .Values.pilot.podAnnotations }}
 {{ toYaml .Values.pilot.podAnnotations | indent 8 }}
         {{- end }}
+        models.tess.io/cms-requested: "true"
+        {{- if .Values.pilot.protegoCert }}
+        models.tess.io/cms-accesspoint-requested: "true"
+        application.tess.io/managed-secrets: "true"
+        {{- end }}
     spec:
       serviceAccountName: istiod-service-account
 {{- if .Values.global.priorityClassName }}
@@ -152,6 +157,12 @@ spec:
           - name: PILOT_ENDPOINT_TELEMETRY_LABEL
             value: "false"
 {{- end }}
+{{- if .Values.pilot.protegoCert }}
+          - name: PILOT_ENABLE_PROTEGO_CERT
+            value: "true"
+          - name: MICROVAULT_ADDRESS
+            value: "localhost:10000"
+{{- end }}
           resources:
 {{- if .Values.pilot.resources }}
 {{ toYaml .Values.pilot.resources | trim | indent 12 }}
@@ -173,16 +184,82 @@ spec:
           {{- end }}
           - name: local-certs
             mountPath: /var/run/secrets/istio-dns
+          {{- if .Values.pilot.mountCAcerts }}
           - name: cacerts
             mountPath: /etc/cacerts
             readOnly: true
+          {{- end }}
+          {{- if .Values.pilot.mountIstioKubeconfig }}
           - name: istio-kubeconfig
             mountPath: /var/run/secrets/remote
             readOnly: true
+          {{- end }}
           {{- if .Values.pilot.jwksResolverExtraRootCA }}
           - name: extracacerts
             mountPath: /cacerts
           {{- end }}
+{{- if .Values.pilot.protegoCert }}
+        - name: microvault
+          image: hub.tess.io/platformsecurity/microvault:0.0.4
+          args:
+          - -cert-agent-enabled
+          - -cert-file-path=/data/cert/server.pem
+          - -key-file-path=/data/cert/server.key
+          - -sds-path=/var/sds/sds.sock
+          - -metrics-port=9080
+          resources:
+            limits:
+              cpu: "20m"
+              memory: 1024Mi
+            requests:
+              cpu: "10m"
+              memory: 200Mi
+          env:
+          - name: APP_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.labels['application.tess.io/name']
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: POD_ENV
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.labels['lifecycle-state.tess.io/name']
+          - name: POD_APP_INST
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.labels['applicationinstance.tess.io/name']
+          imagePullPolicy: Always
+          securityContext:
+            runAsUser: 1337
+            runAsGroup: 1337
+            runAsNonRoot: true
+          volumeMounts:
+          - mountPath: /data/cert
+            name: cert-data
+          - mountPath: /var/sds
+            name: sds-path
+          - mountPath: /tmp
+            name: tmp-path
+          livenessProbe:
+            httpGet:
+              path: /stat
+              port: 9080
+            initialDelaySeconds: 3
+            periodSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /stat/certs
+              port: 9080
+            initialDelaySeconds: 3
+            periodSeconds: 3
+{{- end }}
       volumes:
       # Technically not needed on this pod - but it helps debugging/testing SDS
       # Should be removed after everything works.
@@ -198,18 +275,30 @@ spec:
                 expirationSeconds: 43200
                 path: istio-token
       {{- end }}
+      {{- if .Values.pilot.mountCAcerts }}
       # Optional: user-generated root
       - name: cacerts
         secret:
           secretName: cacerts
           optional: true
+      {{- end }}
+      {{- if .Values.pilot.mountIstioKubeconfig }}
       - name: istio-kubeconfig
         secret:
           secretName: istio-kubeconfig
           optional: true
+      {{- end }}
   {{- if .Values.pilot.jwksResolverExtraRootCA }}
       - name: extracacerts
         configMap:
           name: pilot-jwks-extra-cacerts{{- if not (eq .Values.revision "") }}-{{ .Values.revision }}{{- end }}
+  {{- end }}
+  {{- if .Values.pilot.protegoCert }}
+      - emptyDir: {}
+        name: cert-data
+      - emptyDir: {}
+        name: sds-path
+      - emptyDir: {}
+        name: tmp-path
   {{- end }}
 ---

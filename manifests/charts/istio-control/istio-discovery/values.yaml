@@ -63,6 +63,14 @@ pilot:
   # If false, pilot wil use default values (by default) or user-supplied values.
   configMap: true
 
+  ## Protego cert support
+  protegoCert: false
+
+  # mount optional Secret cacerts
+  mountCAcerts: false
+
+  # mount optional Secret istio-kubeconfig
+  mountIstioKubeconfig: false
 
 sidecarInjectorWebhook:
   # If enabled, the legacy webhook selection logic will be used. This relies on filtering of webhook
