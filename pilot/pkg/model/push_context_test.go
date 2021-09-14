@@ -564,7 +564,8 @@ func TestInitPushContext(t *testing.T) {
 	diff := cmp.Diff(old, newPush,
 		// Allow looking into exported fields for parts of push context
 		cmp.AllowUnexported(PushContext{}, exportToDefaults{}, serviceIndex{}, virtualServiceIndex{},
-			destinationRuleIndex{}, gatewayIndex{}, processedDestRules{}, IstioEgressListenerWrapper{}, SidecarScope{}, AuthenticationPolicies{}),
+			destinationRuleIndex{}, gatewayIndex{}, processedDestRules{}, IstioEgressListenerWrapper{}, SidecarScope{},
+			AuthenticationPolicies{}, sidecarIndex{}),
 		// These are not feasible/worth comparing
 		cmpopts.IgnoreTypes(sync.RWMutex{}, localServiceDiscovery{}, FakeStore{}, atomic.Bool{}, sync.Mutex{}),
 		cmpopts.IgnoreInterfaces(struct{ mesh.Holder }{}),
@@ -653,10 +654,12 @@ func TestSidecarScope(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		scope := ps.getSidecarScope(c.proxy, c.collection)
-		if c.sidecar != scopeToSidecar(scope) {
-			t.Errorf("case with %s should get sidecar %s but got %s", c.describe, c.sidecar, scopeToSidecar(scope))
-		}
+		t.Run(c.describe, func(t *testing.T) {
+			scope := ps.getSidecarScope(c.proxy, c.collection)
+			if c.sidecar != scopeToSidecar(scope) {
+				t.Errorf("should get sidecar %s but got %s", c.sidecar, scopeToSidecar(scope))
+			}
+		})
 	}
 }
 
