@@ -49,6 +49,8 @@ import (
 	"istio.io/istio/pkg/queue"
 	istiolog "istio.io/pkg/log"
 	"istio.io/pkg/monitoring"
+
+	tessclient "tess.io/ebay/client-go/tess"
 )
 
 const (
@@ -223,6 +225,9 @@ type Controller struct {
 
 	pods *PodCache
 
+	tessClient tessclient.Interface
+	appInsts   *ApplicationInstanceCache
+
 	metrics         model.Metrics
 	networksWatcher mesh.NetworksWatcher
 	xdsUpdater      model.XDSUpdater
@@ -365,6 +370,12 @@ func NewController(kubeClient kubelib.Client, options Options) *Controller {
 	})
 	c.registerHandlers(c.pods.informer, "Pods", c.pods.onEvent, nil)
 
+	if features.EnableTessCustomStats {
+		c.tessClient = kubeClient.Tess()
+		c.appInsts = newApplicationInstanceCache(c, kubeClient.TessInformer().Apps().V1alpha2().ApplicationInstances())
+		c.registerHandlers(c.appInsts.informer, "ApplicationInstances", c.appInsts.onEvent, nil)
+	}
+
 	return c
 }
 
@@ -471,6 +482,10 @@ func (c *Controller) onServiceEvent(curr interface{}, event model.Event) error {
 
 		if len(endpoints) > 0 {
 			c.xdsUpdater.EDSCacheUpdate(c.clusterID, string(svcConv.Hostname), svc.Namespace, endpoints)
+		}
+
+		if features.EnableTessCustomStats {
+			resolveApplicationService(c, &svcConv.Attributes)
 		}
 	}
 

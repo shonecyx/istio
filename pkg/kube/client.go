@@ -77,7 +77,12 @@ import (
 	istioclient "istio.io/client-go/pkg/clientset/versioned"
 	istiofake "istio.io/client-go/pkg/clientset/versioned/fake"
 	istioinformer "istio.io/client-go/pkg/informers/externalversions"
+	"istio.io/istio/pilot/pkg/features"
 	"istio.io/pkg/version"
+
+	tessinformer "tess.io/ebay/client-go/informers"
+	tessclient "tess.io/ebay/client-go/tess"
+	tessfake "tess.io/ebay/client-go/tess/fake"
 )
 
 const (
@@ -134,6 +139,12 @@ type Client interface {
 
 	// MCSApisInformer returns an informer for the mcs-apis client
 	MCSApisInformer() mcsapisInformer.SharedInformerFactory
+
+	// Tess returns the Tess kube client
+	Tess() tessclient.Interface
+
+	// TessInformer returns an informer for the tess client
+	TessInformer() tessinformer.SharedInformerFactory
 
 	// RunAndWait starts all informers and waits for their caches to sync.
 	// Warning: this must be called AFTER .Informer() is called, which will register the informer.
@@ -264,6 +275,12 @@ func NewFakeClient(objects ...runtime.Object) ExtendedClient {
 	istioFake.PrependWatchReactor("*", watchReactor(istioFake.Tracker()))
 	c.fastSync = true
 
+	tessFake := tessfake.NewSimpleClientset()
+	c.tess = tessFake
+	c.tessInformer = tessinformer.NewSharedInformerFactoryWithOptions(c.tess, resyncInterval)
+	tessFake.PrependReactor("list", "*", listReactor)
+	tessFake.PrependWatchReactor("*", watchReactor(tessFake.Tracker()))
+
 	return c
 }
 
@@ -293,6 +310,9 @@ type client struct {
 
 	mcsapis          mcsapisClient.Interface
 	mcsapisInformers mcsapisInformer.SharedInformerFactory
+
+	tess         tessclient.Interface
+	tessInformer tessinformer.SharedInformerFactory
 
 	// If enable, will wait for cache syncs with extremely short delay. This should be used only for tests
 	fastSync               bool
@@ -377,6 +397,14 @@ func newClientInternal(clientFactory util.Factory, revision string) (*client, er
 	}
 	c.extSet = ext
 
+	if features.EnableTessCustomStats {
+		c.tess, err = tessclient.NewForConfig(c.config)
+		if err != nil {
+			return nil, err
+		}
+		c.tessInformer = tessinformer.NewSharedInformerFactory(c.tess, resyncInterval)
+	}
+
 	return &c, nil
 }
 
@@ -448,6 +476,14 @@ func (c *client) MCSApisInformer() mcsapisInformer.SharedInformerFactory {
 	return c.mcsapisInformers
 }
 
+func (c *client) Tess() tessclient.Interface {
+	return c.tess
+}
+
+func (c *client) TessInformer() tessinformer.SharedInformerFactory {
+	return c.tessInformer
+}
+
 // RunAndWait starts all informers and waits for their caches to sync.
 // Warning: this must be called AFTER .Informer() is called, which will register the informer.
 func (c *client) RunAndWait(stop <-chan struct{}) {
@@ -456,6 +492,9 @@ func (c *client) RunAndWait(stop <-chan struct{}) {
 	c.metadataInformer.Start(stop)
 	c.istioInformer.Start(stop)
 	c.gatewayapiInformer.Start(stop)
+	if features.EnableTessCustomStats {
+		c.tessInformer.Start(stop)
+	}
 	if c.fastSync {
 		// WaitForCacheSync will virtually never be synced on the first call, as its called immediately after Start()
 		// This triggers a 100ms delay per call, which is often called 2-3 times in a test, delaying tests.
@@ -465,6 +504,9 @@ func (c *client) RunAndWait(stop <-chan struct{}) {
 		fastWaitForCacheSyncDynamic(c.metadataInformer)
 		fastWaitForCacheSync(c.istioInformer)
 		fastWaitForCacheSync(c.gatewayapiInformer)
+		if features.EnableTessCustomStats {
+			fastWaitForCacheSync(c.tessInformer)
+		}
 		_ = wait.PollImmediate(time.Microsecond, wait.ForeverTestTimeout, func() (bool, error) {
 			if c.informerWatchesPending.Load() == 0 {
 				return true, nil
@@ -477,6 +519,9 @@ func (c *client) RunAndWait(stop <-chan struct{}) {
 		c.metadataInformer.WaitForCacheSync(stop)
 		c.istioInformer.WaitForCacheSync(stop)
 		c.gatewayapiInformer.WaitForCacheSync(stop)
+		if features.EnableTessCustomStats {
+			c.tessInformer.WaitForCacheSync(stop)
+		}
 	}
 }
 

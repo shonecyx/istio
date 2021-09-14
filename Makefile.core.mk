@@ -27,6 +27,7 @@ BASE_VERSION ?= 1.10-dev.9
 export GO111MODULE ?= on
 export GOPROXY ?= https://proxy.golang.org
 export GOSUMDB ?= sum.golang.org
+export GOPRIVATE ?= tess.io
 
 # If GOPATH is not set by the env, set it to a sane value
 GOPATH ?= $(shell cd ${ISTIO_GO}/../../..; pwd)

@@ -53,7 +53,7 @@
     "stats_tags": [
       {
         "tag_name": "cluster_name",
-        "regex": "^cluster\\.((.+?(\\..+?\\.svc\\.cluster\\.local)?)\\.)"
+        "regex": "^cluster\\.((.+?(\\..+?(\\.svc\\.cluster\\.local|\\.svc\\..+\\.tess\\.io))?)\\.)"
       },
       {
         "tag_name": "tcp_prefix",
@@ -69,15 +69,22 @@
       },
       {
         "tag_name": "http_conn_manager_listener_prefix",
-        "regex": "^listener(?=\\.).*?\\.http\\.(((?:[_.[:digit:]]*|[_\\[\\]aAbBcCdDeEfF[:digit:]]*))\\.)"
+        "regex": "^listener(?=\\.).*?\\.http\\.((.*(?:[_.[:digit:]]*|[_\\[\\]aAbBcCdDeEfF[:digit:]]*))\\.)"
       },
       {
         "tag_name": "http_conn_manager_prefix",
-        "regex": "^http\\.(((?:[_.[:digit:]]*|[_\\[\\]aAbBcCdDeEfF[:digit:]]*))\\.)"
+        "regex": "^http\\.((.*(?:[_.[:digit:]]*|[_\\[\\]aAbBcCdDeEfF[:digit:]]*))\\.)"
       },
       {
         "tag_name": "listener_address",
         "regex": "^listener\\.(((?:[_.[:digit:]]*|[_\\[\\]aAbBcCdDeEfF[:digit:]]*))\\.)"
+      },
+      {
+        "tag_name": "ssl_cipher",
+        "regex": "^listener(?=\\.).*?\\.ssl\\.ciphers(\\.(.*?))$"
+      },
+      {
+        "tag_name": "cipher_suite"
       },
       {
         "tag_name": "mongo_prefix",

@@ -17,6 +17,7 @@ replace github.com/imdario/mergo => github.com/imdario/mergo v0.3.5
 
 require (
 	cloud.google.com/go v0.80.0
+	cloud.google.com/go/logging v1.2.0 // indirect
 	contrib.go.opencensus.io/exporter/prometheus v0.3.0
 	github.com/Masterminds/sprig/v3 v3.2.2
 	github.com/aws/aws-sdk-go v1.38.3
@@ -109,4 +110,6 @@ require (
 	sigs.k8s.io/gateway-api v0.2.0
 	sigs.k8s.io/mcs-api v0.1.0
 	sigs.k8s.io/yaml v1.2.0
+	tess.io/ebay/api v0.0.0-20210107212451-7f60fa007372
+	tess.io/ebay/client-go v0.0.0-20210107213546-e80ba028f669
 )

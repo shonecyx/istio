@@ -144,6 +144,12 @@ const (
 	LocalityLabel = "istio-locality"
 	// k8s istio-locality label separator
 	k8sSeparator = "."
+
+	// ApplicationInstanceNameLabel is the label of the Tess application instance name
+	ApplicationInstanceNameLabel = "applicationinstance.tess.io/name"
+
+	// ApplicationServiceResourceIdLabel is the label of the Tess application service resource-id
+	ApplicationServiceResourceIdLabel = "applicationservice.cms.tess.io/resource-id"
 )
 
 const (
@@ -459,6 +465,10 @@ type ServiceAttributes struct {
 	// The port that the user provides in the meshNetworks config is the service port.
 	// We translate that to the appropriate node port here.
 	ClusterExternalPorts map[string]map[uint32]uint32
+
+	// For Tess
+	ApplicationInstance string
+	ApplicationService  string
 }
 
 // ServiceDiscovery enumerates Istio service instances.

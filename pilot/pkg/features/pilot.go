@@ -442,6 +442,10 @@ var (
 		"Additional config map to load for shared MeshConfig settings. The standard mesh config will take precedence.").Get()
 	MultiRootMesh = env.RegisterBoolVar("ISTIO_MULTIROOT_MESH", false,
 		"If enabled, mesh will support certificates signed by more than one trustAnchor for ISTIO_MUTUAL mTLS")
+
+	EnableTessCustomStats = env.RegisterBoolVar("PILOT_ENABLE_TESS_CUSTOM_STATS", false,
+		"If enabled, Istiod will access Tess resources to generate customized Cluster stat. "+
+			"This can be disabled for developing non-Tess related features.").Get()
 )
 
 // UnsafeFeaturesEnabled returns true if any unsafe features are enabled.
