@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	"istio.io/api/label"
+	"istio.io/istio/pilot/pkg/features"
 	"istio.io/istio/pilot/pkg/keycertbundle"
 	"istio.io/istio/pkg/kube"
 	"istio.io/istio/pkg/queue"
@@ -129,6 +130,12 @@ func (w *WebhookCertPatcher) addWebhookHandler(config *v1.MutatingWebhookConfigu
 
 // webhookPatchTask takes the result of patchMutatingWebhookConfig and modifies the result for use in task queue
 func (w *WebhookCertPatcher) webhookPatchTask(webhookConfigName string) error {
+
+	if features.InjectionWebhookConfigName.Get() != "" && webhookConfigName != features.InjectionWebhookConfigName.Get() {
+		log.Debugf("skip MutatingWebhookConfiguration %s", webhookConfigName)
+		return nil
+	}
+
 	err := w.patchMutatingWebhookConfig(
 		w.client.AdmissionregistrationV1().MutatingWebhookConfigurations(),
 		webhookConfigName)
