@@ -22,6 +22,7 @@ require (
 	cloud.google.com/go v0.80.0
 	contrib.go.opencensus.io/exporter/prometheus v0.3.0
 	github.com/Masterminds/sprig/v3 v3.2.2
+	github.com/aktau/github-release v0.10.0 // indirect
 	github.com/aws/aws-sdk-go v1.38.3
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/census-instrumentation/opencensus-proto v0.3.0
@@ -39,6 +40,7 @@ require (
 	github.com/fatih/color v1.10.0
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/ghodss/yaml v1.0.0
+	github.com/github-release/github-release v0.10.0 // indirect
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/protobuf v1.5.1
 	github.com/google/go-cmp v0.5.5
@@ -51,6 +53,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-version v1.2.1
 	github.com/hashicorp/golang-lru v0.5.4
+	github.com/kevinburke/rest v0.0.0-20210506044642-5611499aa33c // indirect
 	github.com/kr/pretty v0.2.1
 	github.com/kylelemons/godebug v1.1.0
 	github.com/lestrrat-go/jwx v1.1.5
@@ -74,6 +77,8 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.7.1
 	github.com/stretchr/testify v1.7.0
+	github.com/tomnomnom/linkheader v0.0.0-20180905144013-02ca5825eb80 // indirect
+	github.com/voxelbrain/goptions v0.0.0-20180630082107-58cddc247ea2 // indirect
 	github.com/yl2chen/cidranger v1.0.2
 	go.opencensus.io v0.23.0
 	go.uber.org/atomic v1.7.0
