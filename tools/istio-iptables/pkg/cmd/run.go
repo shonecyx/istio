@@ -126,6 +126,7 @@ func (iptConfigurator *IptablesConfigurator) logConfig() {
 	fmt.Printf("ISTIO_SERVICE_CIDR=%s\n", os.Getenv("ISTIO_SERVICE_CIDR"))
 	fmt.Printf("ISTIO_SERVICE_EXCLUDE_CIDR=%s\n", os.Getenv("ISTIO_SERVICE_EXCLUDE_CIDR"))
 	fmt.Printf("ISTIO_META_DNS_CAPTURE=%s\n", os.Getenv("ISTIO_META_DNS_CAPTURE"))
+	fmt.Printf("ISTIO_META_INVALID_DROP=%s\n", os.Getenv("ISTIO_META_INVALID_DROP"))
 	fmt.Printf("ISTIO_META_DNS_CONNTRACK_ZONE=%s\n", os.Getenv("ISTIO_META_DNS_CONNTRACK_ZONE"))
 	fmt.Println("")
 	iptConfigurator.cfg.Print()
@@ -410,6 +411,13 @@ func (iptConfigurator *IptablesConfigurator) run() {
 
 	// Do not capture internal interface.
 	iptConfigurator.shortCircuitKubeInternalInterface()
+
+	// Create a rule for invalid drop in PREROUTING chain in mangle table, so the iptables will drop the out of window packets instead of reset connection .
+	dropInvalid := iptConfigurator.cfg.DropInvalid
+	if dropInvalid {
+		iptConfigurator.iptables.AppendRuleV4(constants.PREROUTING, constants.MANGLE, "-m", "conntrack", "--ctstate",
+			"INVALID", "-j", constants.DROP)
+	}
 
 	// Create a new chain for to hit tunnel port directly. Envoy will be listening on port acting as VPN tunnel.
 	iptConfigurator.iptables.AppendRuleV4(constants.ISTIOINBOUND, constants.NAT, "-p", constants.TCP, "--dport",

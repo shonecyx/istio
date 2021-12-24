@@ -54,6 +54,9 @@ func (ipt *iptables) Program(netns string, rdrct *Redirect) error {
 	if rdrct.dnsRedirect {
 		nsenterArgs = append(nsenterArgs, "--redirect-dns", "--capture-all-dns")
 	}
+	if rdrct.invalidDrop {
+		nsenterArgs = append(nsenterArgs, "--drop-invalid")
+	}
 	log.Infof("nsenter args: %s", strings.Join(nsenterArgs, " "))
 	out, err := exec.Command("nsenter", nsenterArgs...).CombinedOutput()
 	if err != nil {

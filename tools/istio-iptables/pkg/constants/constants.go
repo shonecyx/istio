@@ -53,6 +53,7 @@ const (
 	REDIRECT = "REDIRECT"
 	MARK     = "MARK"
 	CT       = "CT"
+	DROP     = "DROP"
 )
 
 // iptables chains
@@ -90,6 +91,7 @@ const (
 	IptablesProbePort         = "iptables-probe-port"
 	ProbeTimeout              = "probe-timeout"
 	RedirectDNS               = "redirect-dns"
+	DropInvalid               = "drop-invalid"
 	CaptureAllDNS             = "capture-all-dns"
 )
 

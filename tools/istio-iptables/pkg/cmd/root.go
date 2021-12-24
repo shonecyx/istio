@@ -42,6 +42,9 @@ var (
 	// Use conntrack zones for iptables DNS redirection
 	useConntrackZoneDNS = env.RegisterBoolVar("ISTIO_META_DNS_CONNTRACK_ZONE", false,
 		"If set to true, enable the use of conntrack zone for iptables for DNS redirection").Get()
+	// InvalidDropByIptables is the flag to enable invalid drop iptables rule to drop the out of window packets
+	InvalidDropByIptables = env.RegisterBoolVar("ISTIO_META_INVALID_DROP", false,
+		"If set to true, enable the invalid drop iptables rule, default false will cause iptables reset out of window packets")
 )
 
 var rootCmd = &cobra.Command{
@@ -101,6 +104,7 @@ func constructConfig() *config.Config {
 		SkipRuleApply:           viper.GetBool(constants.SkipRuleApply),
 		RunValidation:           viper.GetBool(constants.RunValidation),
 		RedirectDNS:             viper.GetBool(constants.RedirectDNS),
+		DropInvalid:             viper.GetBool(constants.DropInvalid),
 		CaptureAllDNS:           viper.GetBool(constants.CaptureAllDNS),
 	}
 
@@ -288,6 +292,11 @@ func bindFlags(cmd *cobra.Command, args []string) {
 	}
 	viper.SetDefault(constants.RedirectDNS, dnsCaptureByAgent)
 
+	if err := viper.BindPFlag(constants.DropInvalid, cmd.Flags().Lookup(constants.DropInvalid)); err != nil {
+		handleError(err)
+	}
+	viper.SetDefault(constants.DropInvalid, InvalidDropByIptables)
+
 	if err := viper.BindPFlag(constants.CaptureAllDNS, cmd.Flags().Lookup(constants.CaptureAllDNS)); err != nil {
 		handleError(err)
 	}
@@ -357,6 +366,8 @@ func init() {
 	rootCmd.Flags().Bool(constants.RunValidation, false, "Validate iptables")
 
 	rootCmd.Flags().Bool(constants.RedirectDNS, dnsCaptureByAgent, "Enable capture of dns traffic by istio-agent")
+
+	rootCmd.Flags().Bool(constants.DropInvalid, InvalidDropByIptables.Get(), "Enable invalid drop in the iptables rules")
 
 	rootCmd.Flags().Bool(constants.CaptureAllDNS, false,
 		"Instead of only capturing DNS traffic to DNS server IP, capture all DNS traffic at port 53. This setting is only effective when redirect dns is enabled.")

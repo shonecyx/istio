@@ -23,6 +23,7 @@ import (
 
 	"istio.io/api/annotation"
 	"istio.io/istio/pilot/cmd/pilot-agent/options"
+	"istio.io/istio/tools/istio-iptables/pkg/cmd"
 	"istio.io/pkg/log"
 )
 
@@ -77,6 +78,7 @@ type Redirect struct {
 	excludeOutboundPorts string
 	kubevirtInterfaces   string
 	dnsRedirect          bool
+	invalidDrop          bool
 }
 
 type annotationValidationFunc func(value string) error
@@ -262,5 +264,12 @@ func NewRedirect(pi *PodInfo) (*Redirect, error) {
 		}
 	}
 
+	if v, found := pi.ProxyEnvironments[cmd.InvalidDropByIptables.Name]; found {
+		// parse and set the bool value of invalidDrop
+		redir.invalidDrop, valErr = strconv.ParseBool(v)
+		if valErr != nil {
+			log.Warnf("cannot parse invalid drop environment variable %v", valErr)
+		}
+	}
 	return redir, nil
 }
