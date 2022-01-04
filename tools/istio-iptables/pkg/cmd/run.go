@@ -126,7 +126,7 @@ func (iptConfigurator *IptablesConfigurator) logConfig() {
 	fmt.Printf("ISTIO_SERVICE_CIDR=%s\n", os.Getenv("ISTIO_SERVICE_CIDR"))
 	fmt.Printf("ISTIO_SERVICE_EXCLUDE_CIDR=%s\n", os.Getenv("ISTIO_SERVICE_EXCLUDE_CIDR"))
 	fmt.Printf("ISTIO_META_DNS_CAPTURE=%s\n", os.Getenv("ISTIO_META_DNS_CAPTURE"))
-	fmt.Printf("ISTIO_META_INVALID_DROP=%s\n", os.Getenv("ISTIO_META_INVALID_DROP"))
+	fmt.Printf("INVALID_DROP=%s\n", os.Getenv("INVALID_DROP"))
 	fmt.Printf("ISTIO_META_DNS_CONNTRACK_ZONE=%s\n", os.Getenv("ISTIO_META_DNS_CONNTRACK_ZONE"))
 	fmt.Println("")
 	iptConfigurator.cfg.Print()
