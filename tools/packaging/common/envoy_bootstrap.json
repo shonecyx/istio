@@ -151,7 +151,93 @@
           }
         ]
       }
-    }
+    },
+    "histogram_bucket_settings": [
+      {
+        "match": {
+          "suffix": "istio_request_bytes"
+        },
+        "buckets": [1024, 8192, 65536, 524288, 4194304, 8388608, 33554432, 134217728]
+      },
+      {
+        "match": {
+          "suffix": "istio_response_bytes"
+        },
+        "buckets": [1024, 8192, 65536, 524288, 4194304, 8388608, 33554432, 134217728]
+      },
+      {
+        "match": {
+          "suffix": "istio_request_duration_milliseconds"
+        },
+        "buckets": [1, 5, 10, 50, 100, 1000, 5000, 10000, 30000, 60000]
+      },
+      {
+        "match": {
+          "exact": "server.initialization_time_ms"
+        },
+        "buckets": [5000, 15000, 30000, 60000]
+      },
+      {
+        "match": {
+          "exact": "cluster_manager.cds.update_duration"
+        },
+        "buckets": [1000, 3000, 5000, 10000, 30000]
+      },
+      {
+        "match": {
+          "safe_regex": {
+            "regex": "^cluster\\.(.*)\\.update_duration$",
+            "google_re2": {}
+          }
+        },
+        "buckets": [1, 10, 100, 1000]
+      },
+      {
+        "match": {
+          "exact": "listener_manager.lds.update_duration"
+        },
+        "buckets": [1000, 3000, 5000, 10000, 30000]
+      },
+      {
+        "match": {
+          "safe_regex": {
+            "regex": "^http\\.(.*)\\.update_duration$",
+            "google_re2": {}
+          }
+        },
+        "buckets": [1, 10, 100, 1000]
+      },
+      {
+        "match": {
+          "suffix": ".upstream_cx_connect_ms"
+        },
+        "buckets": [1, 5, 10, 50, 100]
+      },
+      {
+        "match": {
+          "suffix": ".upstream_cx_length_ms"
+        },
+        "buckets": [1000, 10000, 30000, 60000, 300000, 600000, 1800000]
+      },
+      {
+        "match": {
+          "suffix": ".downstream_cx_length_ms"
+        },
+        "buckets": [10, 100, 1000, 10000, 30000, 60000, 600000]
+      },
+      {
+        "match": {
+          "suffix": ".upstream_rq_time"
+        },
+        "buckets": [1, 5, 10, 50, 100, 1000, 5000, 10000, 30000, 60000]
+      },
+      {
+        "match": {
+          "suffix": ".downstream_rq_time"
+        },
+        "buckets": [1, 5, 10, 50, 100, 1000, 5000, 10000, 30000, 60000]
+      }
+    ]
   },
   "admin": {
     "access_log_path": "/var/log/proxy/admin_access.log",
