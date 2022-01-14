@@ -56,6 +56,18 @@
         "regex": "^cluster\\.((.+?(\\..+?(\\.svc\\.cluster\\.local|\\.svc\\..+\\.tess\\.io))?)\\.)"
       },
       {
+        "tag_name": "port",
+        "regex": "^cluster\\..*?(port\\.(.*?)\\.)"
+      },
+      {
+          "tag_name": "application_instance",
+          "regex": "^cluster\\..*?(app_inst\\.(.+?)\\.)"
+      },
+      {
+          "tag_name": "application_service",
+          "regex": "^cluster\\..*?(app_svc\\.(.+?)\\.)"
+      },
+      {
         "tag_name": "tcp_prefix",
         "regex": "^tcp\\.((.*?)\\.)\\w+?$"
       },
