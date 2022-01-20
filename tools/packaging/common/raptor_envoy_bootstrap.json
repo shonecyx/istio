@@ -45,6 +45,18 @@
         "regex": "^cluster\\.((.+?(\\..+?(\\.svc\\.cluster\\.local|\\.svc\\..+\\.tess\\.io))?)\\.)"
       },
       {
+        "tag_name": "port",
+        "regex": "^cluster\\..*?(port\\.(.*?)\\.)"
+      },
+      {
+          "tag_name": "application_instance",
+          "regex": "^cluster\\..*?(app_inst\\.(.+?)\\.)"
+      },
+      {
+          "tag_name": "application_service",
+          "regex": "^cluster\\..*?(app_svc\\.(.+?)\\.)"
+      },
+      {
         "tag_name": "tcp_prefix",
         "regex": "^tcp\\.((.*?)\\.)\\w+?$"
       },
@@ -67,6 +79,13 @@
       {
         "tag_name": "listener_address",
         "regex": "^listener\\.(((?:[_.[:digit:]]*|[_\\[\\]aAbBcCdDeEfF[:digit:]]*))\\.)"
+      },
+      {
+        "tag_name": "ssl_cipher",
+        "regex": "^listener(?=\\.).*?\\.ssl\\.ciphers(\\.(.*?))$"
+      },
+      {
+        "tag_name": "cipher_suite"
       },
       {
         "tag_name": "mongo_prefix",
@@ -93,6 +112,18 @@
       {
         "regex": "(wasm_filter\\.(.+?)\\.)",
         "tag_name": "wasm_filter"
+      },
+      {
+        "tag_name": "authz_enforce_result",
+        "regex": "rbac(\\.(allowed|denied))"
+      },
+      {
+        "tag_name": "authz_dry_run_action",
+        "regex": "(\\.istio_dry_run_(allow|deny)_)"
+      },
+      {
+        "tag_name": "authz_dry_run_result",
+        "regex": "(\\.shadow_(allowed|denied))"
       }
     ],
     "stats_matcher": {
@@ -118,19 +149,96 @@
           {{- end }}
           {
           "prefix": "component"
-          },
-          {
-            "prefix": "listener"
-          },
-          {
-            "prefix": "http"
-          },
-          {
-            "prefix": "cluster"
           }
         ]
       }
-    }
+    },
+    "histogram_bucket_settings": [
+      {
+        "match": {
+          "suffix": "istio_request_bytes"
+        },
+        "buckets": [1024, 8192, 65536, 524288, 4194304, 8388608, 33554432, 134217728]
+      },
+      {
+        "match": {
+          "suffix": "istio_response_bytes"
+        },
+        "buckets": [1024, 8192, 65536, 524288, 4194304, 8388608, 33554432, 134217728]
+      },
+      {
+        "match": {
+          "suffix": "istio_request_duration_milliseconds"
+        },
+        "buckets": [1, 5, 10, 50, 100, 1000, 5000, 10000, 30000, 60000]
+      },
+      {
+        "match": {
+          "exact": "server.initialization_time_ms"
+        },
+        "buckets": [5000, 15000, 30000, 60000]
+      },
+      {
+        "match": {
+          "exact": "cluster_manager.cds.update_duration"
+        },
+        "buckets": [1000, 3000, 5000, 10000, 30000]
+      },
+      {
+        "match": {
+          "safe_regex": {
+            "regex": "^cluster\\.(.*)\\.update_duration$",
+            "google_re2": {}
+          }
+        },
+        "buckets": [1, 10, 100, 1000]
+      },
+      {
+        "match": {
+          "exact": "listener_manager.lds.update_duration"
+        },
+        "buckets": [1000, 3000, 5000, 10000, 30000]
+      },
+      {
+        "match": {
+          "safe_regex": {
+            "regex": "^http\\.(.*)\\.update_duration$",
+            "google_re2": {}
+          }
+        },
+        "buckets": [1, 10, 100, 1000]
+      },
+      {
+        "match": {
+          "suffix": ".upstream_cx_connect_ms"
+        },
+        "buckets": [1, 5, 10, 50, 100]
+      },
+      {
+        "match": {
+          "suffix": ".upstream_cx_length_ms"
+        },
+        "buckets": [1000, 10000, 30000, 60000, 300000, 600000, 1800000]
+      },
+      {
+        "match": {
+          "suffix": ".downstream_cx_length_ms"
+        },
+        "buckets": [10, 100, 1000, 10000, 30000, 60000, 600000]
+      },
+      {
+        "match": {
+          "suffix": ".upstream_rq_time"
+        },
+        "buckets": [1, 5, 10, 50, 100, 1000, 5000, 10000, 30000, 60000]
+      },
+      {
+        "match": {
+          "suffix": ".downstream_rq_time"
+        },
+        "buckets": [1, 5, 10, 50, 100, 1000, 5000, 10000, 30000, 60000]
+      }
+    ]
   },
   "admin": {
     "access_log_path": "/var/log/proxy/admin_access.log",
