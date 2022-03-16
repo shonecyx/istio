@@ -13,6 +13,11 @@ FROM hub.tess.io/istio/base:${BASE_VERSION} as default
 # The source can be found at https://github.com/istio/distroless/tree/iptables
 FROM gcr.io/istio-release/iptables@sha256:e8f940d0d0163ec4563ee070188c1d97308ac08f4a711152ff55f3a81e525140 as distroless
 
+# The following image contains envoyproxy tap filter agent, for scraping tapped data out of 
+# envoy's tap admin ep, and forwarding tapped data towards tapped aggregation service
+ARG TAP_AGENT_VERSION
+FROM hub.tess.io/istio-testing/tap-agent:${TAP_AGENT_VERSION} as tap-agent
+
 # This will build the final image based on either default or distroless from above
 # hadolint ignore=DL3006
 FROM ${BASE_DISTRIBUTION}
@@ -41,6 +46,8 @@ ENV ISTIO_META_ISTIO_PROXY_SHA $proxy_version
 ENV ISTIO_META_ISTIO_VERSION $istio_version
 
 COPY pilot-agent /usr/local/bin/pilot-agent
+# Adding tap-agent executable to pilot-agent image
+COPY --from=tap-agent /tap-agent /usr/local/bin/tap-agent
 
 COPY stats-filter.wasm /etc/istio/extensions/stats-filter.wasm
 COPY stats-filter.compiled.wasm /etc/istio/extensions/stats-filter.compiled.wasm

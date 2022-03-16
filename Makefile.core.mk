@@ -121,6 +121,11 @@ ifeq ($(PROXY_REPO_SHA),)
   export PROXY_REPO_SHA:=$(shell grep PROXY_REPO_SHA istio.deps  -A 4 | grep lastStableSHA | cut -f 4 -d '"')
 endif
 
+# Populate the tap-agent image tag for istio/proxy (i.e. Envoy)
+ifeq ($(TAP_AGENT_VERSION),)
+  export TAP_AGENT_VERSION:=$(shell grep TAP_AGENT_VERSION istio.deps  -A 4 | grep versionTag | cut -f 4 -d '"')
+endif
+
 # Envoy binary variables Keep the default URLs up-to-date with the latest push from istio/proxy.
 
 export ISTIO_ENVOY_BASE_URL ?= https://storage.googleapis.com/istio-build/proxy
