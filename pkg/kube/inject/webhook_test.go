@@ -1210,3 +1210,299 @@ func defaultInstallPackageDir() string {
 	}
 	return filepath.Join(wd, "../../../manifests/")
 }
+
+func TestPostProcessPod(t *testing.T) {
+
+	var (
+		specErr, annotationErr, volumeErr error
+	)
+
+	cases := []struct {
+		name                         string
+		appContainerName             string
+		pcAnnotations                string
+		want                         *corev1.Pod
+		volumes                      []corev1.Volume
+		shouldAppendAppVolumeMount   bool
+		shouldAppendProxyVolumeMount bool
+		shouldAppendExtraCAEnv       bool
+		isValid                      bool
+		errMsg                       string
+	}{
+		{
+			name:             "valid java framework auto cacerts injection",
+			appContainerName: "app",
+			pcAnnotations: `{
+	"concurrency": 20,
+	"proxyMetadata": {
+		"INJECT_AUTO_CERT": "JAVA_FW",
+		"APP_CONTAINER_NAME": "app"	
+	}
+}`,
+			volumes: []corev1.Volume{
+				{
+					Name:         sharedCACertsVolumeName,
+					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+				},
+				{
+					Name:         sharedCAKeyVolumeName,
+					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+				},
+			},
+			shouldAppendAppVolumeMount:   true,
+			shouldAppendProxyVolumeMount: true,
+			isValid:                      true,
+		},
+		{
+			name:             "valid nodejs framework auto cacerts injection",
+			appContainerName: "app",
+			pcAnnotations: `{
+			"concurrency": 20,
+			"proxyMetadata": {
+				"INJECT_AUTO_CERT": "NODEJS_FW",
+				"APP_CONTAINER_NAME": "app"
+			}
+		}`,
+			volumes: []corev1.Volume{
+				{
+					Name:         sharedCACertsVolumeName,
+					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+				},
+				{
+					Name:         sharedCAKeyVolumeName,
+					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+				},
+			},
+			shouldAppendAppVolumeMount:   true,
+			shouldAppendProxyVolumeMount: true,
+			shouldAppendExtraCAEnv:       true,
+			isValid:                      true,
+		},
+		{
+			name:             "valid disabled auto cacerts injection",
+			appContainerName: "app",
+			pcAnnotations: `{
+	"concurrency": 20,
+	"proxyMetadata": {
+		"SOME_KEY": "SOME_VALUE"
+	}
+}`,
+			volumes:                      nil,
+			shouldAppendAppVolumeMount:   false,
+			shouldAppendProxyVolumeMount: false,
+			isValid:                      true,
+		},
+		{
+			name:             "missing application container volume mount",
+			appContainerName: "app",
+			pcAnnotations: `{
+	"concurrency": 20,
+	"proxyMetadata": {
+		"INJECT_AUTO_CERT": "JAVA_FW",
+		"APP_CONTAINER_NAME": "app"	
+	}
+}`,
+			volumes: []corev1.Volume{
+				{
+					Name:         sharedCACertsVolumeName,
+					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+				},
+				{
+					Name:         sharedCAKeyVolumeName,
+					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+				},
+			},
+			shouldAppendAppVolumeMount:   false,
+			shouldAppendProxyVolumeMount: true,
+		},
+		{
+			name:             "missing istio-proxy container volume mount",
+			appContainerName: "app",
+			pcAnnotations: `{
+	"concurrency": 20,
+	"proxyMetadata": {
+		"INJECT_AUTO_CERT": "JAVA_FW",
+		"APP_CONTAINER_NAME": "app"	
+	}
+}`,
+			volumes: []corev1.Volume{
+				{
+					Name:         sharedCACertsVolumeName,
+					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+				},
+				{
+					Name:         sharedCAKeyVolumeName,
+					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+				},
+			},
+			shouldAppendAppVolumeMount:   true,
+			shouldAppendProxyVolumeMount: false,
+			isValid:                      false,
+		},
+		{
+			name:             "invalid application container name",
+			appContainerName: "app",
+			pcAnnotations: `{
+	"concurrency": 20,
+	"proxyMetadata": {
+		"INJECT_AUTO_CERT": "JAVA_FW",
+		"APP_CONTAINER_NAME": "invalid"	
+	}
+}`,
+			volumes: []corev1.Volume{
+				{
+					Name:         sharedCACertsVolumeName,
+					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+				},
+				{
+					Name:         sharedCAKeyVolumeName,
+					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+				},
+			},
+			shouldAppendAppVolumeMount:   true,
+			shouldAppendProxyVolumeMount: true,
+			isValid:                      false,
+			errMsg: `could not find matching application name in proxyMetadata
+'map[APP_CONTAINER_NAME:invalid INJECT_AUTO_CERT:JAVA_FW]'`,
+		},
+		{
+			name:             "invalid application supported framework value",
+			appContainerName: "app",
+			pcAnnotations: `{
+	"concurrency": 20,
+	"proxyMetadata": {
+		"INJECT_AUTO_CERT": "INVALID_FW",
+		"APP_CONTAINER_NAME": "app"	
+	}
+}`,
+			volumes: []corev1.Volume{
+				{
+					Name:         sharedCACertsVolumeName,
+					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+				},
+				{
+					Name:         sharedCAKeyVolumeName,
+					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+				},
+			},
+			shouldAppendAppVolumeMount:   true,
+			shouldAppendProxyVolumeMount: true,
+			isValid:                      false,
+		},
+		{
+			name:             "missing proxy metadata inject auto cert key",
+			appContainerName: "app",
+			pcAnnotations: `{
+	"concurrency": 20,
+	"proxyMetadata": {
+		"INVALID_KEY": "JAVA_FW",
+		"APP_CONTAINER_NAME": "app"	
+	}
+}`,
+			volumes: []corev1.Volume{
+				{
+					Name:         sharedCACertsVolumeName,
+					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+				},
+				{
+					Name:         sharedCAKeyVolumeName,
+					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+				},
+			},
+			shouldAppendAppVolumeMount:   true,
+			shouldAppendProxyVolumeMount: true,
+			isValid:                      false,
+		},
+	}
+
+	for _, tc := range cases {
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-metadata",
+				Namespace: "test-namespace",
+				Annotations: map[string]string{
+					annotation.SidecarInject.Name: "true",
+					annotation.ProxyConfig.Name:   tc.pcAnnotations,
+				},
+			},
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{
+						Name: tc.appContainerName,
+					},
+					{
+						// we expect that shared volume won't be mounted for this additional container
+						Name: "some-container",
+					},
+					{
+						Name: "istio-proxy",
+					},
+				},
+			},
+		}
+		actual := pod.DeepCopy()
+		tc.want = pod.DeepCopy()
+
+		if tc.shouldAppendExtraCAEnv {
+			tc.want.Spec.Containers[0].Env = append(tc.want.Spec.Containers[0].Env, corev1.EnvVar{
+				Name:  nodeJSExtraCACerts,
+				Value: sharedAppCACertsVolumeMountPath + "/" + nodeJSExtraCACertsFile,
+			})
+		}
+
+		if tc.shouldAppendAppVolumeMount {
+			tc.want.Spec.Containers[0].VolumeMounts = append(tc.want.Spec.Containers[0].VolumeMounts,
+				corev1.VolumeMount{
+					Name:      sharedCACertsVolumeName,
+					MountPath: sharedAppCACertsVolumeMountPath})
+		}
+		if tc.shouldAppendProxyVolumeMount {
+			tc.want.Spec.Containers[2].VolumeMounts = append(
+				tc.want.Spec.Containers[1].VolumeMounts,
+				corev1.VolumeMount{
+					Name:      sharedCAKeyVolumeName,
+					MountPath: sharedProxyCAVolumeMountPath})
+
+		}
+
+		tc.want.Spec.Volumes = append(
+			tc.want.Spec.Volumes, tc.volumes...)
+
+		m := mesh.DefaultMeshConfig()
+
+		t.Run(tc.name, func(t *testing.T) {
+			err := postProcessPod(actual, corev1.Pod{}, InjectionParameters{pod: pod, meshConfig: &m, injectedAnnotations: map[string]string{
+				annotation.ProxyConfig.Name: tc.pcAnnotations,
+			}})
+
+			if !reflect.DeepEqual(tc.want.ObjectMeta.Annotations[annotation.ProxyConfig.Name], actual.ObjectMeta.Annotations[annotation.ProxyConfig.Name]) {
+				annotationErr = fmt.Errorf("annotations: Expected result %#v, but got %#v", tc.want.ObjectMeta.Annotations[annotation.ProxyConfig.Name], actual.ObjectMeta.Annotations[annotation.ProxyConfig.Name])
+			}
+
+			if !reflect.DeepEqual(tc.want.Spec.Containers, actual.Spec.Containers) {
+				specErr = fmt.Errorf("containers specs: Expected result %#v, but got %#v", tc.want.Spec.Containers, actual.Spec.Containers)
+			}
+
+			if !reflect.DeepEqual(tc.want.Spec.Volumes, actual.Spec.Volumes) {
+				volumeErr = fmt.Errorf("volumes specs: Expected result %#v, but got %#v", tc.want.Spec.Volumes, actual.Spec.Volumes)
+			}
+
+			if tc.isValid && (annotationErr != nil || specErr != nil || volumeErr != nil) {
+				t.Fatalf("Expecting '%s' test to pass. Failed comparing %v, %v, %v", tc.name, annotationErr, specErr, volumeErr)
+			}
+
+			if !tc.isValid && (annotationErr == nil && specErr == nil && volumeErr == nil) {
+				t.Fatalf("Expecting '%s' test to fail but it did not", tc.name)
+			}
+
+			if !tc.isValid && err != nil {
+				if ok := strings.Compare(tc.errMsg, err.Error()); ok != 0 {
+					t.Fatalf("Expecting '%s' test to fail with '%s' but got '%s'", tc.name, tc.errMsg, err.Error())
+				}
+			}
+
+		})
+
+	}
+
+}

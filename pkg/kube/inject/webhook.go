@@ -521,6 +521,11 @@ func postProcessPod(pod *corev1.Pod, injectedPod corev1.Pod, req InjectionParame
 		pod.Labels = map[string]string{}
 	}
 
+	// handling ebay auto ca certs injection, for terminating application containers outbound HTTPS requests by istio-proxy
+	if err := customPostProcess(pod, req); err != nil {
+		return err
+	}
+
 	overwriteClusterInfo(pod.Spec.Containers, req)
 
 	if err := applyPrometheusMerge(pod, req.meshConfig); err != nil {

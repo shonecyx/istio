@@ -17,7 +17,6 @@ replace github.com/imdario/mergo => github.com/imdario/mergo v0.3.5
 
 require (
 	cloud.google.com/go v0.80.0
-	cloud.google.com/go/logging v1.2.0 // indirect
 	contrib.go.opencensus.io/exporter/prometheus v0.3.0
 	github.com/Masterminds/sprig/v3 v3.2.2
 	github.com/aws/aws-sdk-go v1.38.3
@@ -50,7 +49,6 @@ require (
 	github.com/hashicorp/go-version v1.2.1
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/kr/pretty v0.2.1
-	github.com/kr/text v0.2.0 // indirect
 	github.com/kylelemons/godebug v1.1.0
 	github.com/lestrrat-go/jwx v1.1.5
 	github.com/lucas-clemente/quic-go v0.20.0
@@ -59,7 +57,6 @@ require (
 	github.com/miekg/dns v1.1.41
 	github.com/mitchellh/copystructure v1.1.1
 	github.com/mitchellh/go-homedir v1.1.0
-	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	github.com/onsi/gomega v1.11.0
 	github.com/openshift/api v0.0.0-20200713203337-b2494ecb17dd
 	github.com/pkg/errors v0.9.1
@@ -73,7 +70,6 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.7.1
 	github.com/stretchr/testify v1.7.0
-	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
 	github.com/yl2chen/cidranger v1.0.2
 	go.opencensus.io v0.23.0
 	go.uber.org/atomic v1.7.0
@@ -88,12 +84,10 @@ require (
 	google.golang.org/genproto v0.0.0-20210323160006-e668133fea6a
 	google.golang.org/grpc v1.36.0
 	google.golang.org/protobuf v1.26.0
-	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/square/go-jose.v2 v2.5.1
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 	helm.sh/helm/v3 v3.5.3
-	honnef.co/go/tools v0.0.1-2020.1.5 // indirect
 	istio.io/api v0.0.0-20210816180348-e1c37933e35f
 	istio.io/client-go v1.10.2-0.20210617171818-3dcf18fc084e
 	istio.io/gogo-genproto v0.0.0-20210617170736-ef3953fe9e7f

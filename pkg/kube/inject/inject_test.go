@@ -272,6 +272,15 @@ func TestInjection(t *testing.T) {
 			want:       "custom-template.yaml.injected",
 			inFilePath: "custom-template.iop.yaml",
 		},
+		{
+			in:   "auto-cacerts-injection.yaml",
+			want: "auto-cacerts-injection.yaml.injected",
+			setFlags: []string{
+				"components.cni.enabled=true",
+				"values.istio_cni.chained=true",
+				"values.global.network=network1",
+			},
+		},
 	}
 	// Keep track of tests we add options above
 	// We will search for all test files and skip these ones

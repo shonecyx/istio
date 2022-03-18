@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auto-cacerts-injection
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auto-cacerts-injection
+  template:
+    metadata:
+      labels:
+        app: auto-cacerts-injection
+      annotations:
+        proxy.istio.io/config: |-
+          concurrency: 10
+          proxyMetadata: 
+            INJECT_AUTO_CERT: JAVA_FW
+            APP_CONTAINER_NAME: dummy-app-1
+ 
+    spec:
+      containers:
+        - name: dummy-app-1
+          image: "fake.docker.io/google-samples/hello-go-gke:1.0"
+          ports:
+            - name: http
+              containerPort: 80
+ 
+        - name: dummy-app-2
+          image: "fake.docker.io/google-samples/hello-go-gke:1.0"
+          ports:
+            - name: http
+              containerPort: 90              
+ 
