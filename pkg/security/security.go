@@ -167,6 +167,10 @@ type Options struct {
 	// Delay in reading certificates from file after the change is detected. This is useful in cases
 	// where the write operation of key and cert take longer.
 	FileDebounceDuration time.Duration
+
+	// path for eBat Tess auto root CA cert/key, for self-signing envoy-proxy CSR certificates, as part of
+	// application container TLS request termination
+	AutoRootCAPath string
 }
 
 // TokenManager contains methods for generating token.

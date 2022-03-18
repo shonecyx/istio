@@ -16,6 +16,8 @@ package cache
 
 import (
 	"bytes"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -593,4 +595,39 @@ func TestProxyConfigAnchors(t *testing.T) {
 		ResourceName: sc.existingCertificateFile.GetRootResourceName(),
 		RootCert:     rootCert,
 	})
+}
+
+func TestAutoCACertGenerateSecret(t *testing.T) {
+
+	fakeCACli, err := mock.NewMockCAClient(time.Hour)
+	if err != nil {
+		t.Fatalf("Error creating Mock CA client: %v", err)
+	}
+
+	opt := security.Options{
+		AutoRootCAPath: "./testdata",
+	}
+
+	sc := createCache(t, fakeCACli, func(resourceName string) {}, opt)
+	// set fake root CA
+	cn := "fake.ebay.com"
+	dnsNames := []string{
+		"bar.ebay.com",
+		"*.ebay.com",
+		"dummy.com",
+	}
+	san := strings.Join(dnsNames, "~")
+	gotSecret, err := sc.GenerateSecret("auto://" + cn + "~" + san)
+	if err != nil {
+		t.Fatalf("Failed to get secrets: %v", err)
+	}
+
+	block, _ := pem.Decode(gotSecret.CertificateChain)
+	cert, _ := x509.ParseCertificate(block.Bytes)
+	expectedSAN := strings.Join(cert.DNSNames, "~")
+
+	if cert.Issuer.String() != "CN=ebay.com,O=eBay" || strings.Compare(expectedSAN, san) != 0 {
+		t.Fatalf("failed: cert.DNSNames: %v", cert.DNSNames)
+	}
+
 }

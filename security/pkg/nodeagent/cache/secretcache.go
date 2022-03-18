@@ -34,6 +34,8 @@ import (
 	"istio.io/istio/pkg/spiffe"
 	"istio.io/istio/security/pkg/monitoring"
 	nodeagentutil "istio.io/istio/security/pkg/nodeagent/util"
+	"istio.io/istio/security/pkg/pki/ca"
+	"istio.io/istio/security/pkg/pki/util"
 	pkiutil "istio.io/istio/security/pkg/pki/util"
 	istiolog "istio.io/pkg/log"
 )
@@ -81,6 +83,8 @@ const (
 // would not be helpful, as all we can do is re-read the same file).
 type SecretManagerClient struct {
 	caClient security.Client
+
+	autoCAkeyCertBundle *pkiutil.KeyCertBundle
 
 	// configOptions includes all configurable params for the cache.
 	configOptions *security.Options
@@ -163,15 +167,28 @@ type FileCert struct {
 
 // NewSecretManagerClient creates a new SecretManagerClient.
 func NewSecretManagerClient(caClient security.Client, options *security.Options) (*SecretManagerClient, error) {
+	var keyCertBundle *util.KeyCertBundle
+
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
 	}
 
+	if options.AutoRootCAPath != "" {
+		keyCertBundle, err = ca.GetAutoCAKeyCertBundleFromFile(options.AutoRootCAPath)
+		if err != nil {
+			cacheLog.Errorf("failed to retreive keycert bundle for auto root CA: %+v", err)
+			return nil, err
+		}
+
+		cacheLog.Info("SDS service auto certs CSR signing feature is enabled")
+	}
+
 	ret := &SecretManagerClient{
-		queue:         queue.NewDelayed(queue.DelayQueueBuffer(0)),
-		caClient:      caClient,
-		configOptions: options,
+		queue:               queue.NewDelayed(queue.DelayQueueBuffer(0)),
+		caClient:            caClient,
+		autoCAkeyCertBundle: keyCertBundle,
+		configOptions:       options,
 		existingCertificateFile: model.SdsCertificateConfig{
 			CertificatePath:   security.DefaultCertChainFilePath,
 			PrivateKeyPath:    security.DefaultKeyFilePath,
@@ -236,6 +253,7 @@ func (sc *SecretManagerClient) getCachedSecret(resourceName string) (secret *sec
 
 		return ns
 	}
+
 	return nil
 }
 
@@ -289,6 +307,7 @@ func (sc *SecretManagerClient) GenerateSecret(resourceName string) (secret *secu
 	if ts := time.Since(t0); ts > time.Second {
 		cacheLog.Warnf("slow generate secret lock: %v", ts)
 	}
+	//}
 
 	// send request to CA to get new workload certificate
 	ns, err = sc.generateNewSecret(resourceName)
@@ -527,6 +546,9 @@ func (sc *SecretManagerClient) generateFileSecret(resourceName string) (bool, *s
 }
 
 func (sc *SecretManagerClient) generateNewSecret(resourceName string) (*security.SecretItem, error) {
+
+	var certChainPEM []string
+
 	if sc.caClient == nil {
 		return nil, fmt.Errorf("attempted to fetch secret, but ca client is nil")
 	}
@@ -554,14 +576,31 @@ func (sc *SecretManagerClient) generateNewSecret(resourceName string) (*security
 		return nil, err
 	}
 
-	numOutgoingRequests.With(RequestType.Value(monitoring.CSR)).Increment()
-	timeBeforeCSR := time.Now()
-	certChainPEM, err := sc.caClient.CSRSign(csrPEM, int64(sc.configOptions.SecretTTL.Seconds()))
-	csrLatency := float64(time.Since(timeBeforeCSR).Nanoseconds()) / float64(time.Millisecond)
-	outgoingLatency.With(RequestType.Value(monitoring.CSR)).Record(csrLatency)
-	if err != nil {
-		numFailedOutgoingRequests.With(RequestType.Value(monitoring.CSR)).Increment()
-		return nil, err
+	// handles Tess application TLS termination by sidecar proxy
+	// sign istio-proxy CSR sign request with auto-ca-cert self signed root CA cert
+	if strings.HasPrefix(resourceName, ca.AutoRootCAPrefix) {
+
+		signingCert, signingKey, _, _ := sc.autoCAkeyCertBundle.GetAll()
+		ttl := time.Duration(int64(sc.configOptions.SecretTTL.Seconds())) * time.Second
+		signed, err := ca.CSRSignAutoCACert(resourceName, csrPEM, signingCert, signingKey, ttl)
+		if err != nil {
+			return nil, err
+		}
+		// TODO: needs to make sure that root cert has not been changed
+		certChainPEM = append(certChainPEM, string(signed))
+
+		// TODO: add metric for auto cert CSR signing is enabled
+
+	} else {
+		numOutgoingRequests.With(RequestType.Value(monitoring.CSR)).Increment()
+		timeBeforeCSR := time.Now()
+		certChainPEM, err = sc.caClient.CSRSign(csrPEM, int64(sc.configOptions.SecretTTL.Seconds()))
+		csrLatency := float64(time.Since(timeBeforeCSR).Nanoseconds()) / float64(time.Millisecond)
+		outgoingLatency.With(RequestType.Value(monitoring.CSR)).Record(csrLatency)
+		if err != nil {
+			numFailedOutgoingRequests.With(RequestType.Value(monitoring.CSR)).Increment()
+			return nil, err
+		}
 	}
 
 	certChain := concatCerts(certChainPEM)
