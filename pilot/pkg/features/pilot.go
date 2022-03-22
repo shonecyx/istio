@@ -457,6 +457,12 @@ var (
 		"If enabled, Istiod will generate Subset Load Balancing config for outbound cluster "+
 			"and related metadata for endpoints. Then ingress HTTP request can use header 'istio.workload.endpoint' to "+
 			"specify the destination instance. The header's value is the instance's IP address").Get()
+
+	DisableSdsInitialFetchTimeout = env.RegisterBoolVar(
+		"PILOT_DISABLE_SDS_INITIAL_FETCH_TIMEOUT",
+		false,
+		"Disable SDS initial_fetch_timeout by set it to 0s.",
+	).Get()
 )
 
 // UnsafeFeaturesEnabled returns true if any unsafe features are enabled.

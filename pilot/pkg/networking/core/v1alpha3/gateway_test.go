@@ -1899,3 +1899,50 @@ func TestBuildNameToServiceMapForHttpRoutes(t *testing.T) {
 		t.Errorf("The value of hostname %s mapping must be exist and it should be nil.", bazHostName)
 	}
 }
+
+func TestDisableSdsInitialFetchTimeout(t *testing.T) {
+	defaultValue := features.DisableSdsInitialFetchTimeout
+	features.DisableSdsInitialFetchTimeout = true
+	defer func() { features.DisableSdsInitialFetchTimeout = defaultValue }()
+
+	testCases := []struct {
+		name   string
+		server *networking.Server
+		result *auth.DownstreamTlsContext
+	}{
+		{ // Credential name is specified, SDS config is generated for fetching key/cert.
+			name: "credential name with initial fetch timeout disabled",
+			server: &networking.Server{
+				Hosts: []string{"httpbin.example.com", "bookinfo.example.com"},
+				Tls: &networking.ServerTLSSettings{
+					Mode:           networking.ServerTLSSettings_SIMPLE,
+					CredentialName: "ingress-sds-resource-name",
+				},
+			},
+			result: &auth.DownstreamTlsContext{
+				CommonTlsContext: &auth.CommonTlsContext{
+					AlpnProtocols: util.ALPNHttp,
+					TlsCertificateSdsSecretConfigs: []*auth.SdsSecretConfig{
+						{
+							Name:      "kubernetes://ingress-sds-resource-name",
+							SdsConfig: model.SDSAdsConfigNoInitFetchTimeout,
+						},
+					},
+				},
+				RequireClientCertificate: proto.BoolFalse,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ret := buildGatewayListenerTLSContext(tc.server, &pilot_model.Proxy{
+				Metadata: &pilot_model.NodeMetadata{},
+			})
+			if diff := cmp.Diff(tc.result, ret, protocmp.Transform()); diff != "" {
+				t.Errorf("got diff: %v", diff)
+			}
+		})
+	}
+
+}

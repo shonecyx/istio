@@ -22,6 +22,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	networking "istio.io/api/networking/v1alpha3"
+	"istio.io/istio/pilot/pkg/features"
 	"istio.io/istio/pilot/pkg/model"
 	"istio.io/istio/pilot/pkg/networking/util"
 	"istio.io/istio/pkg/spiffe"
@@ -77,6 +78,14 @@ var SDSAdsConfig = &core.ConfigSource{
 	ResourceApiVersion: core.ApiVersion_V3,
 }
 
+var SDSAdsConfigNoInitFetchTimeout = &core.ConfigSource{
+	ConfigSourceSpecifier: &core.ConfigSource_Ads{
+		Ads: &core.AggregatedConfigSource{},
+	},
+	InitialFetchTimeout: durationpb.New(time.Second * 0),
+	ResourceApiVersion:  core.ApiVersion_V3,
+}
+
 // ConstructSdsSecretConfigForCredential constructs SDS secret configuration used
 // from certificates referenced by credentialName in DestinationRule or Gateway.
 // Currently this is served by a local SDS server, but in the future replaced by
@@ -84,6 +93,13 @@ var SDSAdsConfig = &core.ConfigSource{
 func ConstructSdsSecretConfigForCredential(name string) *tls.SdsSecretConfig {
 	if name == "" {
 		return nil
+	}
+
+	if features.DisableSdsInitialFetchTimeout {
+		return &tls.SdsSecretConfig{
+			Name:      KubernetesSecretTypeURI + name,
+			SdsConfig: SDSAdsConfigNoInitFetchTimeout,
+		}
 	}
 
 	return &tls.SdsSecretConfig{
@@ -217,6 +233,10 @@ func ConstructSdsSecretConfig(name string, node *model.Proxy) *tls.SdsSecretConf
 			},
 			ResourceApiVersion: core.ApiVersion_V3,
 		},
+	}
+
+	if features.DisableSdsInitialFetchTimeout {
+		cfg.SdsConfig.InitialFetchTimeout = durationpb.New(time.Second * 0)
 	}
 
 	if util.IsIstioVersionGE19(node) {

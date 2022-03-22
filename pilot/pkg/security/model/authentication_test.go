@@ -26,6 +26,7 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	"istio.io/istio/pilot/pkg/features"
 	"istio.io/istio/pilot/pkg/model"
 	"istio.io/istio/pkg/spiffe"
 )
@@ -486,4 +487,66 @@ func TestApplyToCommonTLSContext(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDisableSdsInitialFetchTimeout(t *testing.T) {
+	defaultValue := features.DisableSdsInitialFetchTimeout
+	features.DisableSdsInitialFetchTimeout = true
+	defer func() { features.DisableSdsInitialFetchTimeout = defaultValue }()
+
+	testCases := []struct {
+		name               string
+		node               *model.Proxy
+		trustDomainAliases []string
+		validateClient     bool
+		expected           *auth.CommonTlsContext
+	}{
+		{
+			name: "SIMPLE with custom cert paths with initial fetch timeout disabled",
+			node: &model.Proxy{
+				Metadata: &model.NodeMetadata{
+					TLSServerCertChain: "/custom/path/to/cert-chain.pem",
+					TLSServerKey:       "/custom-key.pem",
+				},
+			},
+			validateClient: false,
+			expected: &auth.CommonTlsContext{
+				TlsCertificateSdsSecretConfigs: []*auth.SdsSecretConfig{
+					{
+						Name: "file-cert:/custom/path/to/cert-chain.pem~/custom-key.pem",
+						SdsConfig: &core.ConfigSource{
+							ConfigSourceSpecifier: &core.ConfigSource_ApiConfigSource{
+								ApiConfigSource: &core.ApiConfigSource{
+									ApiType:                   core.ApiConfigSource_GRPC,
+									SetNodeOnFirstMessageOnly: true,
+									TransportApiVersion:       core.ApiVersion_V3,
+									GrpcServices: []*core.GrpcService{
+										{
+											TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
+												EnvoyGrpc: &core.GrpcService_EnvoyGrpc{ClusterName: SDSClusterName},
+											},
+										},
+									},
+								},
+							},
+							InitialFetchTimeout: durationpb.New(time.Second * 0),
+							ResourceApiVersion:  core.ApiVersion_V3,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			tlsContext := &auth.CommonTlsContext{}
+			ApplyToCommonTLSContext(tlsContext, test.node, []string{}, test.trustDomainAliases, test.validateClient)
+
+			if !cmp.Equal(tlsContext, test.expected, protocmp.Transform()) {
+				t.Errorf("got(%#v), want(%#v)\n", spew.Sdump(tlsContext), spew.Sdump(test.expected))
+			}
+		})
+	}
+
 }
