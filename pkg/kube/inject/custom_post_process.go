@@ -20,7 +20,7 @@ var (
 	javaAppFW                        = "JAVA_FW"
 	nodeJSAppFW                      = "NODEJS_FW"
 	nodeJSExtraCACerts               = "NODE_EXTRA_CA_CERTS"
-	nodeJSExtraCACertsFile           = "istio-auto-root-ca-key.pem"
+	nodeJSExtraCACertsFile           = "istio-auto-root-ca-cert.pem"
 )
 
 func getProxyConfig(mc *meshconfig.MeshConfig, metadata *metav1.ObjectMeta) (*meshconfig.MeshConfig, error) {

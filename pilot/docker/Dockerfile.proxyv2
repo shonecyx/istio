@@ -4,6 +4,9 @@ ARG BASE_DISTRIBUTION=default
 # Version is the base image version from the TLD Makefile
 ARG BASE_VERSION=latest
 
+# TAP_AGENT_VERSION specifies tap-agent binary version as part of istio mesh packet capture tool
+ARG TAP_AGENT_VERSION
+
 # The following section is used as base image if BASE_DISTRIBUTION=default
 FROM hub.tess.io/istio/base:${BASE_VERSION} as default
 
@@ -15,7 +18,6 @@ FROM gcr.io/istio-release/iptables@sha256:e8f940d0d0163ec4563ee070188c1d97308ac0
 
 # The following image contains envoyproxy tap filter agent, for scraping tapped data out of 
 # envoy's tap admin ep, and forwarding tapped data towards tapped aggregation service
-ARG TAP_AGENT_VERSION
 FROM hub.tess.io/istio-testing/tap-agent:${TAP_AGENT_VERSION} as tap-agent
 
 # This will build the final image based on either default or distroless from above
