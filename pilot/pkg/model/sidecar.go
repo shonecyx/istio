@@ -471,7 +471,7 @@ func (sc *SidecarScope) DestinationRule(hostname host.Name) *config.Config {
 
 // GetEgressListenerForRDS returns the egress listener corresponding to
 // the listener port or the bind address or the catch all listener
-func (sc *SidecarScope) GetEgressListenerForRDS(port int, bind string) *IstioEgressListenerWrapper {
+func (sc *SidecarScope) GetEgressListenerForRDS(port int, bind string, host host.Name) *IstioEgressListenerWrapper {
 	if sc == nil {
 		return nil
 	}
@@ -493,8 +493,17 @@ func (sc *SidecarScope) GetEgressListenerForRDS(port int, bind string) *IstioEgr
 				// no match.. continue searching
 				continue
 			}
-			// this is a non-zero port match
-			return e
+
+			if host == "" {
+				// this is a non-zero port match
+				return e
+			}
+
+			for _, s := range e.services {
+				if s.Hostname.Matches(host) {
+					return e
+				}
+			}
 		}
 	}
 

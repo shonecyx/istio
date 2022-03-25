@@ -108,3 +108,5 @@ require (
 	tess.io/ebay/client-go v0.0.0-20210107213546-e80ba028f669
 	tess.io/ebayistio/cert-control-plane v0.0.0-20210209041238-53db253f7d62
 )
+
+replace istio.io/api => tess.io/ebayistio/api v0.0.0-20220316221840-6db37b0f9e16

@@ -40,7 +40,7 @@ const (
 
 // ModelProtocolToListenerProtocol converts from a config.Protocol to its corresponding plugin.ListenerProtocol
 func ModelProtocolToListenerProtocol(p protocol.Instance,
-	trafficDirection core.TrafficDirection) ListenerProtocol {
+	trafficDirection core.TrafficDirection, terminateTls bool) ListenerProtocol {
 	// If protocol sniffing is not enabled, the default value is TCP
 	if p == protocol.Unsupported {
 		switch trafficDirection {
@@ -60,9 +60,21 @@ func ModelProtocolToListenerProtocol(p protocol.Instance,
 	switch p {
 	case protocol.HTTP, protocol.HTTP2, protocol.GRPC, protocol.GRPCWeb:
 		return ListenerProtocolHTTP
-	case protocol.TCP, protocol.HTTPS, protocol.TLS,
+	case protocol.TCP, protocol.TLS,
 		protocol.Mongo, protocol.Redis, protocol.MySQL, protocol.Thrift:
 		return ListenerProtocolTCP
+	case protocol.HTTPS:
+		switch trafficDirection {
+		case core.TrafficDirection_INBOUND:
+			return ListenerProtocolTCP
+		case core.TrafficDirection_OUTBOUND:
+			if terminateTls {
+				return ListenerProtocolHTTP
+			}
+			return ListenerProtocolTCP
+		default:
+			// Should not reach here.
+		}
 	case protocol.UDP:
 		return ListenerProtocolUnknown
 	case protocol.Unsupported:
@@ -71,6 +83,7 @@ func ModelProtocolToListenerProtocol(p protocol.Instance,
 		// Should not reach here.
 		return ListenerProtocolAuto
 	}
+	return ListenerProtocolAuto
 }
 
 // FilterChain describes a set of filters (HTTP or TCP) with a shared TLS context.

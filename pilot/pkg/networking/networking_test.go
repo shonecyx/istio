@@ -108,7 +108,7 @@ func TestModelProtocolToListenerProtocol(t *testing.T) {
 			features.EnableProtocolSniffingForInbound = tt.sniffingEnabledForInbound
 			defer func() { features.EnableProtocolSniffingForInbound = defaultInboundValue }()
 
-			if got := ModelProtocolToListenerProtocol(tt.protocol, tt.direction); got != tt.want {
+			if got := ModelProtocolToListenerProtocol(tt.protocol, tt.direction, false); got != tt.want {
 				t.Errorf("ModelProtocolToListenerProtocol() = %v, want %v", got, tt.want)
 			}
 		})

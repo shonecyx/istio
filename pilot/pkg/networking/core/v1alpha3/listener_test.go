@@ -1085,12 +1085,12 @@ func verifyHTTPFilterChainMatch(t *testing.T, fc *listener.FilterChain, directio
 		if fc.FilterChainMatch.TransportProtocol != xdsfilters.RawBufferTransportProtocol {
 			t.Fatalf("exepct %q transport protocol, found %q", xdsfilters.RawBufferTransportProtocol, fc.FilterChainMatch.TransportProtocol)
 		}
-	}
 
-	if direction == model.TrafficDirectionOutbound &&
-		!reflect.DeepEqual(plaintextHTTPALPNs, fc.FilterChainMatch.ApplicationProtocols) {
-		t.Fatalf("expected %d application protocols, %v got %v",
-			len(plaintextHTTPALPNs), plaintextHTTPALPNs, fc.FilterChainMatch.ApplicationProtocols)
+		if direction == model.TrafficDirectionOutbound &&
+			!reflect.DeepEqual(plaintextHTTPALPNs, fc.FilterChainMatch.ApplicationProtocols) {
+			t.Fatalf("expected %d application protocols, %v got %v",
+				len(plaintextHTTPALPNs), plaintextHTTPALPNs, fc.FilterChainMatch.ApplicationProtocols)
+		}
 	}
 
 	hcm := &hcm.HttpConnectionManager{}
@@ -1518,6 +1518,130 @@ func testOutboundListenerConfigWithSidecarWithCaptureModeNone(t *testing.T, serv
 			}
 		}
 	}
+}
+
+func TestOutboundListenerConfig_WithTlsTermination_WithSidecar(t *testing.T) {
+	// Add service and verify it's config
+	services := []*model.Service{
+		{
+			CreationTime: tnow.Add(1 * time.Second),
+			Hostname:     host.Name("test1.com"),
+			Address:      wildcardIP,
+			ClusterVIPs:  make(map[string]string),
+			Ports: model.PortList{
+				&model.Port{
+					Name:     "https",
+					Port:     443,
+					Protocol: protocol.HTTPS,
+				},
+			},
+			Resolution: model.DNSLB,
+			Attributes: model.ServiceAttributes{
+				Namespace: "default",
+			},
+		},
+		{
+			CreationTime: tnow.Add(2 * time.Second),
+			Hostname:     host.Name("test2.com"),
+			Address:      wildcardIP,
+			ClusterVIPs:  make(map[string]string),
+			Ports: model.PortList{
+				&model.Port{
+					Name:     "https",
+					Port:     443,
+					Protocol: protocol.HTTPS,
+				},
+			},
+			Resolution: model.DNSLB,
+			Attributes: model.ServiceAttributes{
+				Namespace: "default",
+			},
+		},
+		{
+			CreationTime: tnow.Add(3 * time.Second),
+			Hostname:     host.Name("test3.com"),
+			Address:      wildcardIP,
+			ClusterVIPs:  make(map[string]string),
+			Ports: model.PortList{
+				&model.Port{
+					Name:     "https",
+					Port:     443,
+					Protocol: protocol.HTTPS,
+				},
+			},
+			Resolution: model.DNSLB,
+			Attributes: model.ServiceAttributes{
+				Namespace: "default",
+			},
+		},
+	}
+
+	testOutboundListenerConfigWithSidecarWithTlsContext(t, services...)
+}
+
+func testOutboundListenerConfigWithSidecarWithTlsContext(t *testing.T, services ...*model.Service) {
+	t.Helper()
+	p := &fakePlugin{}
+	sidecarConfig := &config.Config{
+		Meta: config.Meta{
+			Name:             "foo",
+			Namespace:        "not-default",
+			GroupVersionKind: gvk.Sidecar,
+		},
+		Spec: &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						Number:   443,
+						Protocol: string(protocol.HTTPS),
+						Name:     "tls-termination",
+					},
+					Hosts: []string{"*/test1.com"},
+					Tls: &networking.ServerTLSSettings{
+						Mode:              networking.ServerTLSSettings_SIMPLE,
+						ServerCertificate: "server-cert.crt",
+						PrivateKey:        "private-key.key",
+					},
+				},
+				{
+					Port: &networking.Port{
+						Number:   443,
+						Protocol: string(protocol.HTTPS),
+						Name:     "tls-passthrough",
+					},
+					Hosts: []string{"*/test2.com"},
+					Tls: &networking.ServerTLSSettings{
+						Mode: networking.ServerTLSSettings_PASSTHROUGH,
+					},
+				},
+				{
+					Hosts: []string{"*/*"},
+				},
+			},
+		},
+	}
+
+	listeners := buildOutboundListeners(t, p, getProxy(), sidecarConfig, nil, services...)
+	if len(listeners) != 1 {
+		t.Fatalf("expected %d listeners, found %d", 1, len(listeners))
+	}
+
+	// t.Log(xdstest.DumpList(t, xdstest.InterfaceSlice(listeners)))
+
+	l := findListenerByPort(listeners, 443)
+	if len(l.FilterChains) != 2 {
+		t.Fatalf("expectd %d filter chains, found %d", 2, len(l.FilterChains))
+	}
+
+	if !isHTTPFilterChain(l.FilterChains[0]) {
+		t.Fatalf("expected http filter chain, found %s", l.FilterChains[0].Filters[0].Name)
+	}
+	verifyHTTPFilterChainMatch(t, l.FilterChains[0], model.TrafficDirectionOutbound, true)
+
+	if !isTCPFilterChain(l.FilterChains[1]) {
+		t.Fatalf("expected tcp filter chain, found %s", l.FilterChains[1].Filters[0].Name)
+	}
+
 }
 
 func TestOutboundListenerAccessLogs(t *testing.T) {

@@ -241,7 +241,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarInboundListeners(
 				bind:       bind,
 				port:       &port,
 				bindToPort: false,
-				protocol:   istionetworking.ModelProtocolToListenerProtocol(instance.ServicePort.Protocol, core.TrafficDirection_INBOUND),
+				protocol:   istionetworking.ModelProtocolToListenerProtocol(instance.ServicePort.Protocol, core.TrafficDirection_INBOUND, false),
 			}
 
 			pluginParams := &plugin.InputParams{
@@ -296,7 +296,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarInboundListeners(
 			port:       listenPort,
 			bindToPort: bindToPort,
 			protocol: istionetworking.ModelProtocolToListenerProtocol(listenPort.Protocol,
-				core.TrafficDirection_INBOUND),
+				core.TrafficDirection_INBOUND, false),
 		}
 
 		// we don't need to set other fields of the endpoint here as
@@ -430,7 +430,7 @@ type outboundListenerEntry struct {
 }
 
 func protocolName(p protocol.Instance) string {
-	switch istionetworking.ModelProtocolToListenerProtocol(p, core.TrafficDirection_OUTBOUND) {
+	switch istionetworking.ModelProtocolToListenerProtocol(p, core.TrafficDirection_OUTBOUND, false) {
 	case istionetworking.ListenerProtocolHTTP:
 		return "HTTP"
 	case istionetworking.ListenerProtocolTCP:
@@ -566,6 +566,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundListeners(node *model.
 				bind:       bind,
 				port:       listenPort,
 				bindToPort: bindToPort,
+				tls:        egressListener.IstioListener.Tls,
 			}
 
 			for _, service := range services {
@@ -796,9 +797,17 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundHTTPListenerOptsForPor
 		}
 	}
 
-	listenerProtocol := istionetworking.ModelProtocolToListenerProtocol(listenerOpts.port.Protocol, core.TrafficDirection_OUTBOUND)
+	terminateTls := canTerminateTls(listenerOpts.tls)
+	listenerProtocol := istionetworking.ModelProtocolToListenerProtocol(listenerOpts.port.Protocol, core.TrafficDirection_OUTBOUND, terminateTls)
 
 	// No conflicts. Add a http filter chain option to the listenerOpts
+	//
+	// sidecar outbound HTTP route names are in below formats:
+	// - for egress listener binds to UDS, the route name will be <udsURI>
+	// - for auto-detected protocol which bind to non-ANY and has a specific hostname,
+	//   the route name will be <hostName>:<portNumber>
+	// - HTTP servers have route name set to <portNumber>
+	// - HTTPS servers with TLS termination have route name set to https:<hostName>:<portNumber>
 	var rdsName string
 	if listenerOpts.port.Port == 0 {
 		rdsName = listenerOpts.bind // use the UDS as a rds name
@@ -807,28 +816,41 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundHTTPListenerOptsForPor
 			sniffingEnabled && listenerOpts.bind != actualWildcard && listenerOpts.service != nil {
 			rdsName = string(listenerOpts.service.Hostname) + ":" + strconv.Itoa(listenerOpts.port.Port)
 		} else {
-			rdsName = strconv.Itoa(listenerOpts.port.Port)
+			if listenerOpts.port.Protocol.IsTLS() && listenerOpts.tls != nil && !IsPassThroughServer(listenerOpts.tls) {
+				rdsName = "https" + ":" + string(listenerOpts.service.Hostname) + ":" + strconv.Itoa(listenerOpts.port.Port)
+			} else {
+				rdsName = strconv.Itoa(listenerOpts.port.Port)
+			}
 		}
 	}
-	httpOpts := &httpListenerOpts{
-		// Set useRemoteAddress to true for side car outbound listeners so that it picks up the localhost address of the sender,
-		// which is an internal address, so that trusted headers are not sanitized. This helps to retain the timeout headers
-		// such as "x-envoy-upstream-rq-timeout-ms" set by the calling application.
-		useRemoteAddress: features.UseRemoteAddress,
-		rds:              rdsName,
+
+	fcOpts := &filterChainOpts{
+		httpOpts: &httpListenerOpts{
+			// Set useRemoteAddress to true for side car outbound listeners so that it picks up the localhost address of the sender,
+			// which is an internal address, so that trusted headers are not sanitized. This helps to retain the timeout headers
+			// such as "x-envoy-upstream-rq-timeout-ms" set by the calling application.
+			useRemoteAddress: features.UseRemoteAddress,
+			rds:              rdsName,
+		},
 	}
 
 	if features.HTTP10 || listenerOpts.proxy.Metadata.HTTP10 == "1" {
-		httpOpts.connectionManager = &hcm.HttpConnectionManager{
+		fcOpts.httpOpts.connectionManager = &hcm.HttpConnectionManager{
 			HttpProtocolOptions: &core.Http1ProtocolOptions{
 				AcceptHttp_10: true,
 			},
 		}
 	}
 
-	return true, []*filterChainOpts{{
-		httpOpts: httpOpts,
-	}}
+	if listenerProtocol == istionetworking.ListenerProtocolHTTP && terminateTls {
+		fcOpts.sniHosts = []string{string(listenerOpts.service.Hostname)}
+		fcOpts.tlsContext = buildSidecarOutboundListenerTLSContext(listenerOpts.tls, listenerOpts.proxy)
+		fcOpts.match = &listener.FilterChainMatch{
+			TransportProtocol: xdsfilters.TLSTransportProtocol,
+		}
+	}
+
+	return true, []*filterChainOpts{fcOpts}
 }
 
 func (configgen *ConfigGeneratorImpl) buildSidecarOutboundTCPListenerOptsForPortOrUDS(destinationCIDR *string, listenerMapKey *string,
@@ -953,9 +975,10 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundListenerForPortOrUDS(l
 
 	conflictType := NoConflict
 
+	terminateTls := canTerminateTls(listenerOpts.tls)
 	outboundSniffingEnabled := features.EnableProtocolSniffingForOutbound
 	listenerPortProtocol := listenerOpts.port.Protocol
-	listenerProtocol := istionetworking.ModelProtocolToListenerProtocol(listenerOpts.port.Protocol, core.TrafficDirection_OUTBOUND)
+	listenerProtocol := istionetworking.ModelProtocolToListenerProtocol(listenerOpts.port.Protocol, core.TrafficDirection_OUTBOUND, terminateTls)
 
 	// For HTTP_PROXY protocol defined by sidecars, just create the HTTP listener right away.
 	if listenerPortProtocol == protocol.HTTP_PROXY {
@@ -994,7 +1017,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundListenerForPortOrUDS(l
 			// Since application protocol filter chain match has been added to the http filter chain, a fall through filter chain will be
 			// appended to the listener later to allow arbitrary egress TCP traffic pass through when its port is conflicted with existing
 			// HTTP services, which can happen when a pod accesses a non registry service.
-			if outboundSniffingEnabled {
+			if outboundSniffingEnabled && !listenerOpts.port.Protocol.IsTLS() {
 				if listenerOpts.bind == actualWildcard {
 					for _, opt := range opts {
 						if opt.match == nil {
@@ -1267,6 +1290,17 @@ type buildListenerOpts struct {
 	class             ListenerClass
 	service           *model.Service
 	protocol          istionetworking.ListenerProtocol
+	tls               *networking.ServerTLSSettings
+}
+
+func canTerminateTls(tls *networking.ServerTLSSettings) bool {
+	if tls != nil {
+		switch tls.Mode {
+		case networking.ServerTLSSettings_SIMPLE, networking.ServerTLSSettings_MUTUAL:
+			return true
+		}
+	}
+	return false
 }
 
 func buildHTTPConnectionManager(listenerOpts buildListenerOpts, httpOpts *httpListenerOpts,

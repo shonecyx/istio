@@ -1075,6 +1075,162 @@ func TestSidecarOutboundHTTPRouteConfig(t *testing.T) {
 	}
 }
 
+func TestSidecarOutboundHTTPRouteConfigWithHTTPS(t *testing.T) {
+	services := []*model.Service{
+		buildHTTPSService("bookinfo.com", visibility.Public, wildcardIP, "default", 9999, 70),
+		buildHTTPSService("test-1.https.com", visibility.Public, wildcardIP, "default", 8443, 8080),
+		buildHTTPSService("test-2.https.com", visibility.Public, wildcardIP, "default", 8443, 8080),
+	}
+
+	sidecarConfigWithHTTPSTermination := &config.Config{
+		Meta: config.Meta{
+			Name:      "foo",
+			Namespace: "not-default",
+		},
+		Spec: &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						Number:   8443,
+						Protocol: "HTTPS",
+						Name:     "something",
+					},
+					Hosts: []string{"*/test-1.https.com"},
+					Tls: &networking.ServerTLSSettings{
+						Mode:              networking.ServerTLSSettings_SIMPLE,
+						ServerCertificate: "server-cert.crt",
+						PrivateKey:        "private-key.key",
+					},
+				},
+				{
+					Port: &networking.Port{
+						Number:   8443,
+						Protocol: "HTTPS",
+						Name:     "something",
+					},
+					Hosts: []string{"*/test-2.https.com"},
+					Tls: &networking.ServerTLSSettings{
+						Mode:              networking.ServerTLSSettings_SIMPLE,
+						ServerCertificate: "server-cert.crt",
+						PrivateKey:        "private-key.key",
+					},
+				},
+			},
+		},
+	}
+
+	sidecarConfigWithHTTPSTerminationAllowAny := &config.Config{
+		Meta: config.Meta{
+			Name:      "foo",
+			Namespace: "not-default",
+		},
+		Spec: &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						Number:   8443,
+						Protocol: "HTTPS",
+						Name:     "something",
+					},
+					Hosts: []string{"*/test-2.https.com"},
+					Tls: &networking.ServerTLSSettings{
+						Mode:              networking.ServerTLSSettings_SIMPLE,
+						ServerCertificate: "server-cert.crt",
+						PrivateKey:        "private-key.key",
+					},
+				},
+			},
+			OutboundTrafficPolicy: &networking.OutboundTrafficPolicy{
+				Mode: networking.OutboundTrafficPolicy_ALLOW_ANY,
+			},
+		},
+	}
+
+	sidecarConfigWithHTTPSTerminationMultiHosts := &config.Config{
+		Meta: config.Meta{
+			Name:      "foo",
+			Namespace: "not-default",
+		},
+		Spec: &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						Number:   8443,
+						Protocol: "HTTPS",
+						Name:     "something",
+					},
+					Hosts: []string{
+						"*/test-1.https.com",
+						"*/test-2.https.com",
+					},
+					Tls: &networking.ServerTLSSettings{
+						Mode:              networking.ServerTLSSettings_SIMPLE,
+						ServerCertificate: "server-cert.crt",
+						PrivateKey:        "private-key.key",
+					},
+				},
+			},
+		},
+	}
+
+	cases := []struct {
+		name                  string
+		routeName             string
+		sidecarConfig         *config.Config
+		virtualServiceConfigs []*config.Config
+		// virtualHost Name and domains
+		expectedHosts map[string]map[string]bool
+		registryOnly  bool
+	}{
+		{
+			name:                  "HTTPS termination without VirtualService",
+			routeName:             "https:test-2.https.com:8443",
+			sidecarConfig:         sidecarConfigWithHTTPSTermination,
+			virtualServiceConfigs: nil,
+			expectedHosts: map[string]map[string]bool{
+				"test-2.https.com:8443": {
+					"test-2.https.com:8443": true, "test-2.https.com": true,
+					"*.test-2.https.com:8443": true, "*.test-2.https.com": true,
+				},
+			},
+			registryOnly: true,
+		},
+		{
+			name:                  "HTTPS termination and allow any without VirtualService",
+			routeName:             "https:test-2.https.com:8443",
+			sidecarConfig:         sidecarConfigWithHTTPSTerminationAllowAny,
+			virtualServiceConfigs: nil,
+			expectedHosts: map[string]map[string]bool{
+				"test-2.https.com:8443": {
+					"test-2.https.com:8443": true, "test-2.https.com": true,
+					"*.test-2.https.com:8443": true, "*.test-2.https.com": true,
+				},
+			},
+			registryOnly: true,
+		},
+		{
+			name:                  "egress listener with multiple hosts",
+			routeName:             "https:test-2.https.com:8443",
+			sidecarConfig:         sidecarConfigWithHTTPSTerminationMultiHosts,
+			virtualServiceConfigs: nil,
+			expectedHosts: map[string]map[string]bool{
+				"test-2.https.com:8443": {
+					"test-2.https.com:8443": true, "test-2.https.com": true,
+					"*.test-2.https.com:8443": true, "*.test-2.https.com": true,
+				},
+			},
+			registryOnly: true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			testSidecarRDSVHosts(t, services, c.sidecarConfig, c.virtualServiceConfigs,
+				c.routeName, c.expectedHosts, c.registryOnly)
+		})
+	}
+}
+
 func testSidecarRDSVHosts(t *testing.T, services []*model.Service,
 	sidecarConfig *config.Config, virtualServices []*config.Config, routeName string,
 	expectedHosts map[string]map[string]bool, registryOnly bool) {
@@ -1139,7 +1295,7 @@ func testSidecarRDSVHosts(t *testing.T, services []*model.Service,
 	}
 }
 
-func buildHTTPService(hostname string, v visibility.Instance, ip, namespace string, ports ...int) *model.Service {
+func _buildHTTPService(hostname string, v visibility.Instance, ip, namespace string, protocol protocol.Instance, ports ...int) *model.Service {
 	service := &model.Service{
 		CreationTime: tnow,
 		Hostname:     host.Name(hostname),
@@ -1162,10 +1318,18 @@ func buildHTTPService(hostname string, v visibility.Instance, ip, namespace stri
 		Ports = append(Ports, &model.Port{
 			Name:     fmt.Sprintf("http-%d", p),
 			Port:     p,
-			Protocol: protocol.HTTP,
+			Protocol: protocol,
 		})
 	}
 
 	service.Ports = Ports
 	return service
+}
+
+func buildHTTPService(hostname string, v visibility.Instance, ip, namespace string, ports ...int) *model.Service {
+	return _buildHTTPService(hostname, v, ip, namespace, protocol.HTTP, ports...)
+}
+
+func buildHTTPSService(hostname string, v visibility.Instance, ip, namespace string, ports ...int) *model.Service {
+	return _buildHTTPService(hostname, v, ip, namespace, protocol.HTTPS, ports...)
 }
