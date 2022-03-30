@@ -170,15 +170,15 @@ spec:
   {{- if or (eq $value "JAVA_FW") (eq $value "NODEJS_FW") }}                       
   - name: istio-auto-cacert
     {{- if eq $value "JAVA_FW" }}
-    image: hub.tess.io/istio-testing/istio-auto-cacert-openjre:57b12e9
+    image: "{{ .Values.global.autoCert.openjre.image }}"
     {{- end }}
     {{- if eq $value "NODEJS_FW" }}
-    image: hub.tess.io/istio-testing/istio-auto-cacert-nodejs:57b12e9
+    image: "{{ .Values.global.autoCert.nodejs.image }}"
     {{- end }}            
-    imagePullPolicy: Always
+    imagePullPolicy: "{{ valueOrDefault .Values.global.imagePullPolicy `Always` }}"
     args: 
       - -c
-      - {{  printf "/build/import-auto-root-ca.sh %s /build/bundled-cacerts /usr/local/share/ca-certificates /usr/local/share/ca" $value }}             
+      - {{  printf "/build/import-auto-root-ca.sh %s /build/bundled-cacerts /usr/local/share/istio-auto-ca-certificates /usr/local/share/istio-auto-ca" $value }}             
     command:
       - /bin/sh       
     resources:

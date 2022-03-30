@@ -598,7 +598,6 @@ func TestProxyConfigAnchors(t *testing.T) {
 }
 
 func TestAutoCACertGenerateSecret(t *testing.T) {
-
 	fakeCACli, err := mock.NewMockCAClient(time.Hour)
 	if err != nil {
 		t.Fatalf("Error creating Mock CA client: %v", err)
@@ -609,25 +608,72 @@ func TestAutoCACertGenerateSecret(t *testing.T) {
 	}
 
 	sc := createCache(t, fakeCACli, func(resourceName string) {}, opt)
-	// set fake root CA
-	cn := "fake.ebay.com"
-	dnsNames := []string{
-		"bar.ebay.com",
-		"*.ebay.com",
-		"dummy.com",
-	}
-	san := strings.Join(dnsNames, "~")
-	gotSecret, err := sc.GenerateSecret("auto://" + cn + "~" + san)
-	if err != nil {
-		t.Fatalf("Failed to get secrets: %v", err)
+
+	cases := []struct {
+		name             string
+		resourceName     string
+		expectedCN       string
+		expectedDNSNames []string
+		expectedIssuer   string
+	}{
+		{
+			name:         "valid auto cert with subject alternatives",
+			resourceName: "auto://fake.ebay.com~bar.ebay.com~*.ebay.com~dummy.com",
+			expectedCN:   "fake.ebay.com",
+			expectedDNSNames: []string{"fake.ebay.com",
+				"bar.ebay.com",
+				"*.ebay.com",
+				"dummy.com",
+			},
+			expectedIssuer: "CN=ebay.com,O=eBay",
+		},
+		{
+			name:             "valid auto cert without subject alternatives",
+			resourceName:     "auto://fake.ebay.com",
+			expectedCN:       "fake.ebay.com",
+			expectedDNSNames: []string{"fake.ebay.com"},
+			expectedIssuer:   "CN=ebay.com,O=eBay",
+		},
+		{
+			name:             "invalid auto cert resource name seperator",
+			resourceName:     "auto://fake.ebay.com:bar.ebay.com",
+			expectedCN:       "fake.ebay.com:bar.ebay.com",
+			expectedDNSNames: []string{"fake.ebay.com:bar.ebay.com"},
+			expectedIssuer:   "CN=ebay.com,O=eBay",
+		},
+		{
+			name:             "valid non-auto cert without subject alternatives",
+			resourceName:     "dummy.ebay.com",
+			expectedCN:       "",
+			expectedDNSNames: []string{"test"},
+			expectedIssuer:   "CN=Istio CA,O=Istio,L=Sunnyvale,ST=California,C=US",
+		},
 	}
 
-	block, _ := pem.Decode(gotSecret.CertificateChain)
-	cert, _ := x509.ParseCertificate(block.Bytes)
-	expectedSAN := strings.Join(cert.DNSNames, "~")
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
 
-	if cert.Issuer.String() != "CN=ebay.com,O=eBay" || strings.Compare(expectedSAN, san) != 0 {
-		t.Fatalf("failed: cert.DNSNames: %v", cert.DNSNames)
+			gotSecret, err := sc.GenerateSecret(c.resourceName)
+			if err != nil {
+				t.Fatalf("Failed to get secrets: %v", err)
+			}
+
+			block, _ := pem.Decode(gotSecret.CertificateChain)
+			cert, _ := x509.ParseCertificate(block.Bytes)
+			san := strings.Join(cert.DNSNames, "~")
+
+			expectedSAN := strings.Join(c.expectedDNSNames, "~")
+
+			//TODO: In case we would like to check cert output - fmt.Printf("%v", string(gotSecret.CertificateChain))
+			if cert.Issuer.String() != c.expectedIssuer ||
+				cert.Subject.CommonName != c.expectedCN ||
+				strings.Compare(expectedSAN, san) != 0 {
+
+				t.Fatalf("expected: Issuer '%s', Subject CN: '%s' DNSNames: '%v'\nbut got: Issuer '%s', Subject CN: '%s' DNSNames: '%v'",
+					c.expectedIssuer, c.expectedCN, c.expectedDNSNames, cert.Issuer.String(), cert.Subject.CommonName, cert.DNSNames)
+			}
+
+		})
 	}
 
 }

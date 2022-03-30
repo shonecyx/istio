@@ -665,7 +665,7 @@ func TestGenCertFromCSR(t *testing.T) {
 		if err != nil {
 			t.Errorf("failed to parse certificate request %v", err)
 		}
-		derBytes, err = GenCertFromCSR(csr, signingCert, c.signeeKey.Public(), *signingKey, c.subjectIDs, time.Hour, false)
+		derBytes, err = GenCertFromCSR(csr, signingCert, c.signeeKey.Public(), *signingKey, c.subjectIDs, time.Hour, false, false)
 		if err != nil {
 			t.Errorf("failed to GenCertFromCSR, error %v", err)
 		}

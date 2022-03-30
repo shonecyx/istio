@@ -221,8 +221,8 @@ func MergeCertOptions(defaultOpts, deltaOpts CertOptions) CertOptions {
 
 // GenCertFromCSR generates a X.509 certificate with the given CSR.
 func GenCertFromCSR(csr *x509.CertificateRequest, signingCert *x509.Certificate, publicKey interface{},
-	signingKey crypto.PrivateKey, subjectIDs []string, ttl time.Duration, isCA bool) (cert []byte, err error) {
-	tmpl, err := genCertTemplateFromCSR(csr, subjectIDs, ttl, isCA)
+	signingKey crypto.PrivateKey, subjectIDs []string, ttl time.Duration, isCA, isAutoCA bool) (cert []byte, err error) {
+	tmpl, err := genCertTemplateFromCSR(csr, subjectIDs, ttl, isCA, isAutoCA)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +258,7 @@ func LoadSignerCredsFromFiles(signerCertFile string, signerPrivFile string) (*x5
 
 // genCertTemplateFromCSR generates a certificate template with the given CSR.
 // The NotBefore value of the cert is set to current time.
-func genCertTemplateFromCSR(csr *x509.CertificateRequest, subjectIDs []string, ttl time.Duration, isCA bool) (
+func genCertTemplateFromCSR(csr *x509.CertificateRequest, subjectIDs []string, ttl time.Duration, isCA, isAutoCA bool) (
 	*x509.Certificate, error) {
 	subjectIDsInString := strings.Join(subjectIDs, ",")
 	var keyUsage x509.KeyUsage
@@ -266,6 +266,11 @@ func genCertTemplateFromCSR(csr *x509.CertificateRequest, subjectIDs []string, t
 	if isCA {
 		// If the cert is a CA cert, the private key is allowed to sign other certificates.
 		keyUsage = x509.KeyUsageCertSign
+	} else if isAutoCA {
+		// Otherwise the private key is allowed for digital signature and key encipherment.
+		keyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
+		// For now, we do not differentiate non-CA certs to be used on client auth or server auth.
+		extKeyUsages = append(extKeyUsages, x509.ExtKeyUsageServerAuth)
 	} else {
 		// Otherwise the private key is allowed for digital signature and key encipherment.
 		keyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment

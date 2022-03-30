@@ -15,6 +15,7 @@
 package model
 
 import (
+	"strings"
 	"time"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -26,6 +27,7 @@ import (
 	"istio.io/istio/pilot/pkg/model"
 	"istio.io/istio/pilot/pkg/networking/util"
 	"istio.io/istio/pkg/spiffe"
+	"istio.io/istio/security/pkg/pki/ca"
 )
 
 const (
@@ -86,6 +88,19 @@ var SDSAdsConfigNoInitFetchTimeout = &core.ConfigSource{
 	ResourceApiVersion:  core.ApiVersion_V3,
 }
 
+var AutoSdsConfig = &core.ConfigSource{
+	ConfigSourceSpecifier: &core.ConfigSource_ApiConfigSource{
+		ApiConfigSource: &core.ApiConfigSource{
+			ApiType: core.ApiConfigSource_GRPC,
+			GrpcServices: []*core.GrpcService{{
+				TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
+					EnvoyGrpc: &core.GrpcService_EnvoyGrpc{ClusterName: SDSClusterName}}}},
+			SetNodeOnFirstMessageOnly: true,
+			TransportApiVersion:       core.ApiVersion_V3}},
+	InitialFetchTimeout: durationpb.New(time.Second * 0),
+	ResourceApiVersion:  core.ApiVersion_V3,
+}
+
 // ConstructSdsSecretConfigForCredential constructs SDS secret configuration used
 // from certificates referenced by credentialName in DestinationRule or Gateway.
 // Currently this is served by a local SDS server, but in the future replaced by
@@ -93,6 +108,13 @@ var SDSAdsConfigNoInitFetchTimeout = &core.ConfigSource{
 func ConstructSdsSecretConfigForCredential(name string) *tls.SdsSecretConfig {
 	if name == "" {
 		return nil
+	}
+
+	if strings.HasPrefix(name, ca.AutoCertPrefix) {
+		return &tls.SdsSecretConfig{
+			Name:      name,
+			SdsConfig: AutoSdsConfig,
+		}
 	}
 
 	if features.DisableSdsInitialFetchTimeout {

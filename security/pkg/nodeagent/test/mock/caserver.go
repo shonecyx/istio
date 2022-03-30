@@ -191,7 +191,7 @@ func (s *CAServer) sign(csrPEM []byte, subjectIDs []string, _ time.Duration, for
 		return nil, caerror.NewError(caerror.CSRError, err)
 	}
 	signingCert, signingKey, _, _ := s.KeyCertBundle.GetAll()
-	certBytes, err := util.GenCertFromCSR(csr, signingCert, csr.PublicKey, *signingKey, subjectIDs, s.certLifetime, forCA)
+	certBytes, err := util.GenCertFromCSR(csr, signingCert, csr.PublicKey, *signingKey, subjectIDs, s.certLifetime, forCA, false)
 	if err != nil {
 		caServerLog.Errorf("failed to generate cert from CSR: %+v", err)
 		return nil, caerror.NewError(caerror.CertGenError, err)

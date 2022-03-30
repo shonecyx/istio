@@ -13,8 +13,9 @@ import (
 var (
 	sharedCACertsVolumeName          = "istio-auto-ca-cert"
 	sharedCAKeyVolumeName            = "istio-auto-ca"
-	sharedAppCACertsVolumeMountPath  = "/usr/local/share/ca-certificates"
-	sharedProxyCAVolumeMountPath     = "/usr/local/share/ca"
+	sharedAppCACertsVolumeMountPath  = "/usr/local/share/istio-auto-ca-certificates"
+	sharedProxyCAVolumeMountPath     = "/usr/local/share/istio-auto-ca"
+	autoRootCAPath                   = "AUTO_ROOT_CA_PATH"
 	autoCACertProxyMetadataKey       = "INJECT_AUTO_CERT"
 	appContainerNameProxyMetadataKey = "APP_CONTAINER_NAME"
 	javaAppFW                        = "JAVA_FW"
@@ -79,6 +80,13 @@ func handleContainersSpecAutoCertInjection(pod *corev1.Pod, appStack string, pod
 		}
 
 		if c.Name == "istio-proxy" {
+
+			env := corev1.EnvVar{
+				Name:  autoRootCAPath,
+				Value: sharedProxyCAVolumeMountPath,
+			}
+			c.Env = append(c.Env, env)
+
 			vm := corev1.VolumeMount{
 				Name:      sharedCAKeyVolumeName,
 				MountPath: sharedProxyCAVolumeMountPath,

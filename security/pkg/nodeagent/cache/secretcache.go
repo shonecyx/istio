@@ -241,6 +241,10 @@ func (sc *SecretManagerClient) getCachedSecret(resourceName string) (secret *sec
 			cacheLog.WithLabels("ttl", time.Until(c.ExpireTime)).Info("returned workload trust anchor from cache")
 
 		} else {
+			// TODO: Make sure if there is a need to store auto Cert in cache
+			if strings.HasPrefix(resourceName, ca.AutoCertPrefix) {
+				return nil
+			}
 			ns = &security.SecretItem{
 				ResourceName:     resourceName,
 				CertificateChain: c.CertificateChain,
@@ -578,12 +582,13 @@ func (sc *SecretManagerClient) generateNewSecret(resourceName string) (*security
 
 	// handles Tess application TLS termination by sidecar proxy
 	// sign istio-proxy CSR sign request with auto-ca-cert self signed root CA cert
-	if strings.HasPrefix(resourceName, ca.AutoRootCAPrefix) {
+	if strings.HasPrefix(resourceName, ca.AutoCertPrefix) {
 
 		signingCert, signingKey, _, _ := sc.autoCAkeyCertBundle.GetAll()
 		ttl := time.Duration(int64(sc.configOptions.SecretTTL.Seconds())) * time.Second
 		signed, err := ca.CSRSignAutoCACert(resourceName, csrPEM, signingCert, signingKey, ttl)
 		if err != nil {
+			cacheLog.Errorf("%s auto ca: failed signing CSR certificate: %v", logPrefix, err)
 			return nil, err
 		}
 		// TODO: needs to make sure that root cert has not been changed

@@ -56,7 +56,7 @@ spec:
           name: http
         resources: {}
         volumeMounts:
-        - mountPath: /usr/local/share/ca-certificates
+        - mountPath: /usr/local/share/istio-auto-ca-certificates
           name: istio-auto-ca-cert
       - image: fake.docker.io/google-samples/hello-go-gke:1.0
         name: dummy-app-2
@@ -187,7 +187,7 @@ spec:
           name: istio-podinfo
         - mountPath: /var/log/proxy
           name: proxy-accesslogs
-        - mountPath: /usr/local/share/ca
+        - mountPath: /usr/local/share/istio-auto-ca
           name: istio-auto-ca
       initContainers:
       - args:

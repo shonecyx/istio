@@ -69,7 +69,7 @@ func (c *CAClient) CSRSign(csrPEM []byte, certValidTTLInSec int64) ([]string, er
 		return nil, fmt.Errorf("csr sign error: %v", err)
 	}
 	subjectIDs := []string{"test"}
-	certBytes, err := util.GenCertFromCSR(csr, signingCert, csr.PublicKey, *signingKey, subjectIDs, c.certLifetime, false)
+	certBytes, err := util.GenCertFromCSR(csr, signingCert, csr.PublicKey, *signingKey, subjectIDs, c.certLifetime, false, false)
 	if err != nil {
 		return nil, fmt.Errorf("csr sign error: %v", err)
 	}

@@ -36,6 +36,7 @@ import (
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/google/go-cmp/cmp"
 	"google.golang.org/protobuf/testing/protocmp"
+	"google.golang.org/protobuf/types/known/anypb"
 
 	meshconfig "istio.io/api/mesh/v1alpha1"
 	networking "istio.io/api/networking/v1alpha3"
@@ -46,6 +47,7 @@ import (
 	"istio.io/istio/pilot/pkg/networking/plugin"
 	"istio.io/istio/pilot/pkg/networking/plugin/registry"
 	"istio.io/istio/pilot/pkg/networking/util"
+	authn_model "istio.io/istio/pilot/pkg/security/model"
 	"istio.io/istio/pilot/pkg/serviceregistry"
 	memregistry "istio.io/istio/pilot/pkg/serviceregistry/memory"
 	xdsfilters "istio.io/istio/pilot/pkg/xds/filters"
@@ -1521,6 +1523,9 @@ func testOutboundListenerConfigWithSidecarWithCaptureModeNone(t *testing.T, serv
 }
 
 func TestOutboundListenerConfig_WithTlsTermination_WithSidecar(t *testing.T) {
+	defaultValue := features.DisableSdsInitialFetchTimeout
+	features.DisableSdsInitialFetchTimeout = true
+	defer func() { features.DisableSdsInitialFetchTimeout = defaultValue }()
 	// Add service and verify it's config
 	services := []*model.Service{
 		{
@@ -1579,6 +1584,19 @@ func TestOutboundListenerConfig_WithTlsTermination_WithSidecar(t *testing.T) {
 	testOutboundListenerConfigWithSidecarWithTlsContext(t, services...)
 }
 
+func verifyDownstreamTlsContext(result *anypb.Any, ret *tls.DownstreamTlsContext) error {
+
+	m := tls.DownstreamTlsContext{}
+	if err := ptypes.UnmarshalAny(result, &m); err != nil {
+		return err
+	}
+
+	if diff := cmp.Diff(m.CommonTlsContext, ret.CommonTlsContext, protocmp.Transform()); diff != "" {
+		return fmt.Errorf("got diff: `%v", diff)
+	}
+	return nil
+}
+
 func testOutboundListenerConfigWithSidecarWithTlsContext(t *testing.T, services ...*model.Service) {
 	t.Helper()
 	p := &fakePlugin{}
@@ -1607,6 +1625,18 @@ func testOutboundListenerConfigWithSidecarWithTlsContext(t *testing.T, services 
 					Port: &networking.Port{
 						Number:   443,
 						Protocol: string(protocol.HTTPS),
+						Name:     "auto-tls-termination",
+					},
+					Hosts: []string{"*/test1.com"},
+					Tls: &networking.ServerTLSSettings{
+						Mode:           networking.ServerTLSSettings_SIMPLE,
+						CredentialName: "auto://fake.example.com",
+					},
+				},
+				{
+					Port: &networking.Port{
+						Number:   443,
+						Protocol: string(protocol.HTTPS),
 						Name:     "tls-passthrough",
 					},
 					Hosts: []string{"*/test2.com"},
@@ -1621,6 +1651,31 @@ func testOutboundListenerConfigWithSidecarWithTlsContext(t *testing.T, services 
 		},
 	}
 
+	expectedTlsContextResult := []*tls.DownstreamTlsContext{
+		{
+			CommonTlsContext: &tls.CommonTlsContext{
+				AlpnProtocols: []string{"h2", "http/1.1"},
+				TlsCertificateSdsSecretConfigs: []*tls.SdsSecretConfig{
+					{
+						Name:      "file-cert:server-cert.crt~private-key.key",
+						SdsConfig: authn_model.AutoSdsConfig,
+					},
+				},
+			},
+		},
+		{
+			CommonTlsContext: &tls.CommonTlsContext{
+				AlpnProtocols: []string{"h2", "http/1.1"},
+				TlsCertificateSdsSecretConfigs: []*tls.SdsSecretConfig{
+					{
+						Name:      "auto://fake.example.com",
+						SdsConfig: authn_model.AutoSdsConfig,
+					},
+				},
+			},
+		},
+	}
+
 	listeners := buildOutboundListeners(t, p, getProxy(), sidecarConfig, nil, services...)
 	if len(listeners) != 1 {
 		t.Fatalf("expected %d listeners, found %d", 1, len(listeners))
@@ -1629,7 +1684,7 @@ func testOutboundListenerConfigWithSidecarWithTlsContext(t *testing.T, services 
 	// t.Log(xdstest.DumpList(t, xdstest.InterfaceSlice(listeners)))
 
 	l := findListenerByPort(listeners, 443)
-	if len(l.FilterChains) != 2 {
+	if len(l.FilterChains) != 3 {
 		t.Fatalf("expectd %d filter chains, found %d", 2, len(l.FilterChains))
 	}
 
@@ -1637,9 +1692,21 @@ func testOutboundListenerConfigWithSidecarWithTlsContext(t *testing.T, services 
 		t.Fatalf("expected http filter chain, found %s", l.FilterChains[0].Filters[0].Name)
 	}
 	verifyHTTPFilterChainMatch(t, l.FilterChains[0], model.TrafficDirectionOutbound, true)
+	if err := verifyDownstreamTlsContext(l.FilterChains[0].TransportSocket.GetTypedConfig(), expectedTlsContextResult[0]); err != nil {
+		t.Fatal(err)
+	}
 
-	if !isTCPFilterChain(l.FilterChains[1]) {
-		t.Fatalf("expected tcp filter chain, found %s", l.FilterChains[1].Filters[0].Name)
+	if !isHTTPFilterChain(l.FilterChains[1]) {
+		t.Fatalf("expected http filter chain, found %s", l.FilterChains[1].Filters[0].Name)
+	}
+
+	verifyHTTPFilterChainMatch(t, l.FilterChains[1], model.TrafficDirectionOutbound, true)
+	if err := verifyDownstreamTlsContext(l.FilterChains[1].TransportSocket.GetTypedConfig(), expectedTlsContextResult[1]); err != nil {
+		t.Fatal(err)
+	}
+
+	if !isTCPFilterChain(l.FilterChains[2]) {
+		t.Fatalf("expected tcp filter chain, found %s", l.FilterChains[2].Filters[0].Name)
 	}
 
 }

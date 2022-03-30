@@ -14,19 +14,17 @@ import (
 )
 
 var (
-	AutoRootCAPrefix = "auto://"
+	AutoCertPrefix = "auto://"
 )
 
 func parseAutoCAResourceName(resourceName string) (commonName string, subjectIDs []string, err error) {
 
-	s := strings.TrimPrefix(resourceName, AutoRootCAPrefix)
+	s := strings.TrimPrefix(resourceName, AutoCertPrefix)
 	parts := strings.Split(s, "~")
 
-	if len(parts) == 1 {
-		return "", nil, fmt.Errorf("failed to parse CSR resource name '%s'. invalid 'auto://\"CN\"~[\"SAN\"..]' format", resourceName)
-	} else {
+	if len(parts) > 0 {
 		commonName = parts[0]
-		subjectIDs = append(subjectIDs, parts[1:]...)
+		subjectIDs = append(subjectIDs, parts...)
 	}
 
 	return commonName, subjectIDs, nil
@@ -42,14 +40,15 @@ func CSRSignAutoCACert(resourceName string, csrPEM []byte,
 		return nil, caerror.NewError(caerror.CSRError, err)
 	}
 
-	//TODO: parse resouceName auto://fake.ebay.com,bar.ebay.com~*.ebay.com~10.0.0.1
 	cn, subjectIDs, err := parseAutoCAResourceName(resourceName)
 	if err != nil {
 		return nil, err
 	}
-	csr.Subject.CommonName = cn
 
-	certBytes, err := util.GenCertFromCSR(csr, signingCert, csr.PublicKey, *signingKey, subjectIDs, ttl, true)
+	csr.Subject.CommonName = cn
+	csr.Subject.Organization = []string{}
+
+	certBytes, err := util.GenCertFromCSR(csr, signingCert, csr.PublicKey, *signingKey, subjectIDs, ttl, false, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate cert from CSR: %+v", err)
 	}
@@ -67,12 +66,12 @@ func GetAutoCAKeyCertBundleFromFile(path string) (*util.KeyCertBundle, error) {
 
 	//TODO should be used as an additional function in agent init
 	//TODO: read from memory (use CLI args to read from file)
-	certBytes, err := ioutil.ReadFile(path + "/" + "istio-auto-ca-cert.pem")
+	certBytes, err := ioutil.ReadFile(path + "/" + "istio-auto-root-ca-cert.pem")
 	if err != nil {
 		return nil, err
 	}
 	//TODO: read from memory (use CLI args to read from file)
-	privKeyBytes, err := ioutil.ReadFile(path + "/" + "istio-auto-ca-key.pem")
+	privKeyBytes, err := ioutil.ReadFile(path + "/" + "istio-auto-root-ca-key.pem")
 	if err != nil {
 		return nil, err
 	}
