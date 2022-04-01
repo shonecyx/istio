@@ -166,28 +166,28 @@ spec:
       runAsUser: 0
   {{ end }}
   {{- range $key, $value := .ProxyConfig.ProxyMetadata }}
-  {{- if eq $key "INJECT_AUTO_CERT" }} 
-  {{- if or (eq $value "JAVA_FW") (eq $value "NODEJS_FW") }}                       
+  {{- if eq $key "INJECT_AUTO_CERT" }}
+  {{- if or (eq $value "JAVA_FW") (eq $value "NODEJS_FW") }}
   - name: istio-auto-cacert
     {{- if eq $value "JAVA_FW" }}
-    image: "{{ .Values.global.autoCert.openjre.image }}"
+    image: "{{ $.Values.global.proxy.autoCert.initContainer.openjre.image }}"
     {{- end }}
     {{- if eq $value "NODEJS_FW" }}
-    image: "{{ .Values.global.autoCert.nodejs.image }}"
-    {{- end }}            
-    imagePullPolicy: "{{ valueOrDefault .Values.global.imagePullPolicy `Always` }}"
-    args: 
+    image: "{{ $.Values.global.proxy.autoCert.initContainer.nodejs.image }}"
+    {{- end }}
+    imagePullPolicy: "{{ valueOrDefault $.Values.global.proxy.autoCert.initContainer.imagePullPolicy `Always` }}"
+    args:
       - -c
-      - {{  printf "/build/import-auto-root-ca.sh %s /build/bundled-cacerts /usr/local/share/istio-auto-ca-certificates /usr/local/share/istio-auto-ca" $value }}             
+      - {{  printf "/build/import-auto-root-ca.sh %s /build/bundled-cacerts /usr/local/share/istio-auto-ca-certificates /usr/local/share/istio-auto-ca" $value }}
     command:
-      - /bin/sh       
+      - /bin/sh
     resources:
       limits:
-        cpu: 20m
+        cpu: 200m
         memory: 128Mi
       requests:
-        cpu: 10m
-        memory: 10Mi      
+        cpu: 200m
+        memory: 128Mi
     securityContext:
       runAsGroup: 1337
       runAsNonRoot: true
@@ -196,12 +196,12 @@ spec:
     - name: build-cacerts
       mountPath: /build/bundled-cacerts
     - name: istio-auto-ca-cert
-      mountPath: /usr/local/share/ca-certificates
+      mountPath: /usr/local/share/istio-auto-ca-certificates
     - name: istio-auto-ca
-      mountPath: /usr/local/share/ca             
-  {{- end }}               
+      mountPath: /usr/local/share/istio-auto-ca
   {{- end }}
-  {{- end }}        
+  {{- end }}
+  {{- end }}
   containers:
   - name: istio-proxy
   {{- if contains "/" (annotation .ObjectMeta `sidecar.istio.io/proxyImage` .Values.global.proxy.image) }}
@@ -482,13 +482,13 @@ spec:
   {{- end }}
   # used by istio-auto-cacert initContainer
   {{- range $key, $value := .ProxyConfig.ProxyMetadata }}
-  {{- if eq $key "INJECT_AUTO_CERT" }} 
-  {{- if or (eq $value "JAVA_FW") (eq $value "NODEJS_FW") }}     
+  {{- if eq $key "INJECT_AUTO_CERT" }}
+  {{- if or (eq $value "JAVA_FW") (eq $value "NODEJS_FW") }}
   - name: build-cacerts
-    emptyDir: {} 
+    emptyDir: {}
   {{- end }}
   {{- end }}
-  {{- end }}  
+  {{- end }}
   # SDS channel between istioagent and Envoy
   - emptyDir:
       medium: Memory

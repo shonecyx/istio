@@ -11,17 +11,18 @@ import (
 )
 
 var (
-	sharedCACertsVolumeName          = "istio-auto-ca-cert"
-	sharedCAKeyVolumeName            = "istio-auto-ca"
-	sharedAppCACertsVolumeMountPath  = "/usr/local/share/istio-auto-ca-certificates"
-	sharedProxyCAVolumeMountPath     = "/usr/local/share/istio-auto-ca"
-	autoRootCAPath                   = "AUTO_ROOT_CA_PATH"
-	autoCACertProxyMetadataKey       = "INJECT_AUTO_CERT"
-	appContainerNameProxyMetadataKey = "APP_CONTAINER_NAME"
-	javaAppFW                        = "JAVA_FW"
-	nodeJSAppFW                      = "NODEJS_FW"
-	nodeJSExtraCACerts               = "NODE_EXTRA_CA_CERTS"
-	nodeJSExtraCACertsFile           = "istio-auto-root-ca-cert.pem"
+	sharedCACertsVolumeName           = "istio-auto-ca-cert"
+	sharedCAKeyVolumeName             = "istio-auto-ca"
+	sharedAppCACertsVolumeMountPath   = "/usr/local/share/istio-auto-ca-certificates"
+	sharedProxyCAVolumeMountPath      = "/usr/local/share/istio-auto-ca"
+	sharedRaptorJRElibVolumeMountPath = "/build/open-jre/jre/lib/security"
+	autoRootCAPath                    = "AUTO_ROOT_CA_PATH"
+	autoCACertProxyMetadataKey        = "INJECT_AUTO_CERT"
+	appContainerNameProxyMetadataKey  = "APP_CONTAINER_NAME"
+	javaAppFW                         = "JAVA_FW"
+	nodeJSAppFW                       = "NODEJS_FW"
+	nodeJSExtraCACerts                = "NODE_EXTRA_CA_CERTS"
+	nodeJSExtraCACertsFile            = "istio-auto-root-ca-cert.pem"
 )
 
 func getProxyConfig(mc *meshconfig.MeshConfig, metadata *metav1.ObjectMeta) (*meshconfig.MeshConfig, error) {
@@ -59,16 +60,24 @@ func handleContainersSpecAutoCertInjection(pod *corev1.Pod, appStack string, pod
 
 		if ok := verifyMatchingApplicationContainerName(c.Name, podProxyMetadata); ok {
 			matched = true
+			if appStack == javaAppFW {
+				// For Raptor Java application, override original root CA trust store
+				vm := corev1.VolumeMount{
+					Name:      sharedCACertsVolumeName,
+					MountPath: sharedRaptorJRElibVolumeMountPath,
+					ReadOnly:  true,
+				}
+				c.VolumeMounts = append(c.VolumeMounts, vm)
+			} else if appStack == nodeJSAppFW {
 
-			vm := corev1.VolumeMount{
-				Name:      sharedCACertsVolumeName,
-				MountPath: sharedAppCACertsVolumeMountPath,
-				ReadOnly:  true,
-			}
-			c.VolumeMounts = append(c.VolumeMounts, vm)
+				vm := corev1.VolumeMount{
+					Name:      sharedCACertsVolumeName,
+					MountPath: sharedAppCACertsVolumeMountPath,
+					ReadOnly:  true,
+				}
+				c.VolumeMounts = append(c.VolumeMounts, vm)
 
-			// in case of NodeJS FW, add extra CA certs environment variable
-			if appStack == nodeJSAppFW {
+				// in case of NodeJS FW, add extra CA certs environment variable
 				env := corev1.EnvVar{
 					Name:  nodeJSExtraCACerts,
 					Value: sharedAppCACertsVolumeMountPath + "/" + nodeJSExtraCACertsFile,

@@ -385,6 +385,18 @@ global:
       enable: true
       image: hub.tess.io/istio/proxy-logrotater:0.0.1
 
+    # Istio auto cert for terminating HTTPS on sidecar egress listener
+    autoCert:
+      initContainer:
+        # For production deployment, do not use `Always`.
+        imagePullPolicy: IfNotPresent
+        # Raptor Java application
+        openjre:
+          image: ""
+        # Node.js application
+        nodejs:
+          image: ""
+
   proxy_init:
     # Base name for the proxy_init container, used to configure iptables.
     image: proxyv2
