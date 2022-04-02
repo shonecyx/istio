@@ -15,7 +15,7 @@ var (
 	sharedCAKeyVolumeName             = "istio-auto-ca"
 	sharedAppCACertsVolumeMountPath   = "/usr/local/share/istio-auto-ca-certificates"
 	sharedProxyCAVolumeMountPath      = "/usr/local/share/istio-auto-ca"
-	sharedRaptorJRElibVolumeMountPath = "/build/open-jre/jre/lib/security"
+	sharedRaptorJRElibVolumeMountPath = "/ebay/app/jre/lib/security"
 	autoRootCAPath                    = "AUTO_ROOT_CA_PATH"
 	autoCACertProxyMetadataKey        = "INJECT_AUTO_CERT"
 	appContainerNameProxyMetadataKey  = "APP_CONTAINER_NAME"
