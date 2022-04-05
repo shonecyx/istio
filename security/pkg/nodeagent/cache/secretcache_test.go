@@ -603,18 +603,13 @@ func TestAutoCACertGenerateSecret(t *testing.T) {
 		t.Fatalf("Error creating Mock CA client: %v", err)
 	}
 
-	opt := security.Options{
-		AutoRootCAPath: "./testdata",
-	}
-
-	sc := createCache(t, fakeCACli, func(resourceName string) {}, opt)
-
 	cases := []struct {
 		name             string
 		resourceName     string
 		expectedCN       string
 		expectedDNSNames []string
 		expectedIssuer   string
+		isEnabled        bool
 	}{
 		{
 			name:         "valid auto cert with subject alternatives",
@@ -626,6 +621,7 @@ func TestAutoCACertGenerateSecret(t *testing.T) {
 				"dummy.com",
 			},
 			expectedIssuer: "CN=ebay.com,O=eBay",
+			isEnabled:      true,
 		},
 		{
 			name:             "valid auto cert without subject alternatives",
@@ -633,6 +629,7 @@ func TestAutoCACertGenerateSecret(t *testing.T) {
 			expectedCN:       "fake.ebay.com",
 			expectedDNSNames: []string{"fake.ebay.com"},
 			expectedIssuer:   "CN=ebay.com,O=eBay",
+			isEnabled:        true,
 		},
 		{
 			name:             "invalid auto cert resource name seperator",
@@ -640,6 +637,7 @@ func TestAutoCACertGenerateSecret(t *testing.T) {
 			expectedCN:       "fake.ebay.com:bar.ebay.com",
 			expectedDNSNames: []string{"fake.ebay.com:bar.ebay.com"},
 			expectedIssuer:   "CN=ebay.com,O=eBay",
+			isEnabled:        true,
 		},
 		{
 			name:             "valid non-auto cert without subject alternatives",
@@ -652,6 +650,11 @@ func TestAutoCACertGenerateSecret(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			opt := security.Options{}
+			if c.isEnabled {
+				opt.AutoRootCAPath = "./testdata"
+			}
+			sc := createCache(t, fakeCACli, func(resourceName string) {}, opt)
 
 			gotSecret, err := sc.GenerateSecret(c.resourceName)
 			if err != nil {
@@ -661,7 +664,6 @@ func TestAutoCACertGenerateSecret(t *testing.T) {
 			block, _ := pem.Decode(gotSecret.CertificateChain)
 			cert, _ := x509.ParseCertificate(block.Bytes)
 			san := strings.Join(cert.DNSNames, "~")
-
 			expectedSAN := strings.Join(c.expectedDNSNames, "~")
 
 			//TODO: In case we would like to check cert output - fmt.Printf("%v", string(gotSecret.CertificateChain))

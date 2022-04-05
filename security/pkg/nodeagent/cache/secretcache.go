@@ -582,10 +582,9 @@ func (sc *SecretManagerClient) generateNewSecret(resourceName string) (*security
 
 	// handles Tess application TLS termination by sidecar proxy
 	// sign istio-proxy CSR sign request with auto-ca-cert self signed root CA cert
-	if strings.HasPrefix(resourceName, ca.AutoCertPrefix) {
-
+	if sc.configOptions.AutoRootCAPath != "" && strings.HasPrefix(resourceName, ca.AutoCertPrefix) {
 		signingCert, signingKey, _, _ := sc.autoCAkeyCertBundle.GetAll()
-		ttl := time.Duration(int64(sc.configOptions.SecretTTL.Seconds())) * time.Second
+		ttl := time.Duration(int64(ca.AutoCertTTL)) * time.Second
 		signed, err := ca.CSRSignAutoCACert(resourceName, csrPEM, signingCert, signingKey, ttl)
 		if err != nil {
 			cacheLog.Errorf("%s auto ca: failed signing CSR certificate: %v", logPrefix, err)

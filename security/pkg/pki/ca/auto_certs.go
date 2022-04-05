@@ -15,6 +15,8 @@ import (
 
 var (
 	AutoCertPrefix = "auto://"
+	// Setting root ca ttl to 10 years
+	AutoCertTTL = 10 * 365 * 24 * time.Hour.Seconds()
 )
 
 func parseAutoCAResourceName(resourceName string) (commonName string, subjectIDs []string, err error) {
