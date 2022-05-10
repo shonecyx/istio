@@ -787,12 +787,10 @@ func (cb *ClusterBuilder) buildUpstreamClusterTLSContext(opts *buildClusterOpts,
 			CommonTlsContext: &auth.CommonTlsContext{},
 			Sni:              tls.Sni,
 		}
+		// Set auto-sni if sni field is not explicitly set
+		cb.setAutoSni(c, tls)
 
 		if tls.CredentialName != "" {
-			tlsContext = &auth.UpstreamTlsContext{
-				CommonTlsContext: &auth.CommonTlsContext{},
-				Sni:              tls.Sni,
-			}
 			// If  credential name is specified at Destination Rule config and originating node is egress gateway, create
 			// SDS config for egress gateway to fetch key/cert at gateway agent.
 			authn_model.ApplyCustomSDSToClientCommonTLSContext(tlsContext.CommonTlsContext, tls)
@@ -825,6 +823,10 @@ func (cb *ClusterBuilder) buildUpstreamClusterTLSContext(opts *buildClusterOpts,
 			CommonTlsContext: &auth.CommonTlsContext{},
 			Sni:              tls.Sni,
 		}
+
+		// Set auto-sni if sni field is not explicitly set
+		cb.setAutoSni(c, tls)
+
 		if tls.CredentialName != "" {
 			// If  credential name is specified at Destination Rule config and originating node is egress gateway, create
 			// SDS config for egress gateway to fetch key/cert at gateway agent.
@@ -879,6 +881,18 @@ func (cb *ClusterBuilder) buildUpstreamClusterTLSContext(opts *buildClusterOpts,
 		}
 	}
 	return tlsContext, nil
+}
+
+func (cb *ClusterBuilder) setAutoSni(mc *MutableCluster, tls *networking.ClientTLSSettings) {
+	if mc != nil && features.EnableAutoSni && len(tls.Sni) == 0 {
+		if mc.httpProtocolOptions == nil {
+			mc.httpProtocolOptions = &http.HttpProtocolOptions{}
+		}
+		if mc.httpProtocolOptions.UpstreamHttpProtocolOptions == nil {
+			mc.httpProtocolOptions.UpstreamHttpProtocolOptions = &core.UpstreamHttpProtocolOptions{}
+		}
+		mc.httpProtocolOptions.UpstreamHttpProtocolOptions.AutoSni = true
+	}
 }
 
 func (cb *ClusterBuilder) setUseDownstreamProtocol(mc *MutableCluster) {

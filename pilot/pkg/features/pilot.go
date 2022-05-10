@@ -463,6 +463,9 @@ var (
 		false,
 		"Disable SDS initial_fetch_timeout by set it to 0s.",
 	).Get()
+
+	EnableAutoSni = env.RegisterBoolVar("ENABLE_AUTO_SNI", false,
+		"If enabled, automatically set SNI when `DestinationRules` do not specify the same").Get()
 )
 
 // UnsafeFeaturesEnabled returns true if any unsafe features are enabled.
