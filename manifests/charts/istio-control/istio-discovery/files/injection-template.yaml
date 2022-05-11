@@ -455,6 +455,12 @@ spec:
       {{- end }}
     - name: {{ annotation .ObjectMeta `sidecar.istio.io/accesslogVolumeName` "proxy-accesslogs" }}
       mountPath: /var/log/proxy
+    {{- if .Values.global.tapAgent.proxy.enable }}
+    - name: tap-agent-config
+      mountPath: /etc/tap-agent
+    - name: tap-agent-log
+      mountPath: /var/log/tap-agent            
+    {{- end }}      
   {{- if .Values.global.proxy.logRotation.enable }}
   - image: "{{ .Values.global.proxy.logRotation.image }}"
     imagePullPolicy: "{{ valueOrDefault .Values.global.imagePullPolicy `Always` }}"
@@ -479,6 +485,14 @@ spec:
   - name: custom-bootstrap-volume
     configMap:
       name: {{ annotation .ObjectMeta `sidecar.istio.io/bootstrapOverride` "" }}
+  {{- end }}
+  {{- if .Values.global.tapAgent.proxy.enable }}  
+  - name: tap-agent-config 
+    configMap:
+      name: tap-agent-config-cm
+      optional: true 
+  - name: tap-agent-log
+    emptyDir: {}  
   {{- end }}
   # used by istio-auto-cacert initContainer
   {{- range $key, $value := .ProxyConfig.ProxyMetadata }}

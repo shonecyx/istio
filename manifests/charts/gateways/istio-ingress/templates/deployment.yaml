@@ -244,6 +244,12 @@ spec:
             mountPath: /etc/istio/proxy
           - name: config-volume
             mountPath: /etc/istio/config
+          {{- if .Values.global.tapAgent.proxy.enable }}
+          - name: tap-agent-config
+            mountPath: /etc/tap-agent
+          - name: tap-agent-log
+            mountPath: /var/log/tap-agent            
+          {{- end }}                  
 {{- if eq .Values.global.pilotCertProvider "istiod" }}
           - mountPath: /var/run/secrets/istio
             name: istiod-ca-cert
@@ -339,6 +345,14 @@ spec:
           name: {{ .configMapName | quote }}
           optional: true
       {{- end }}
+      {{- if .Values.global.tapAgent.proxy.enable }}  
+      - name: tap-agent-config 
+        configMap:
+          name: tap-agent-config-cm
+          optional: true 
+      - name: tap-agent-log
+        emptyDir: {}  
+      {{- end }}      
       affinity:
 {{ include "nodeaffinity" (dict "global" .Values.global "nodeSelector" $gateway.nodeSelector) | trim | indent 8 }}
       {{- include "podAntiAffinity" $gateway | indent 6 }}
