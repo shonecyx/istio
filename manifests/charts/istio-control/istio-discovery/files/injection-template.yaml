@@ -455,7 +455,7 @@ spec:
       {{- end }}
     - name: {{ annotation .ObjectMeta `sidecar.istio.io/accesslogVolumeName` "proxy-accesslogs" }}
       mountPath: /var/log/proxy
-    {{- if .Values.global.tapAgent.proxy.enable }}
+    {{- if .Values.global.proxy.tapAgent.enable }}
     - name: tap-agent-config
       mountPath: /etc/tap-agent
     - name: tap-agent-log
@@ -486,7 +486,7 @@ spec:
     configMap:
       name: {{ annotation .ObjectMeta `sidecar.istio.io/bootstrapOverride` "" }}
   {{- end }}
-  {{- if .Values.global.tapAgent.proxy.enable }}  
+  {{- if .Values.global.proxy.tapAgent.enable }}  
   - name: tap-agent-config 
     configMap:
       name: tap-agent-config-cm
