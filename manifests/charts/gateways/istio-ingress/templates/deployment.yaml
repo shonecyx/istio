@@ -50,6 +50,14 @@ spec:
         prometheus.io/path: "/stats/prometheus"
         {{- end }}
         sidecar.istio.io/inject: "false"
+        {{- if eq .Values.global.proxy.tapAgentEnabled true }}
+        io.sherlock.logs.istio-proxy/emptydir.tap-agent-log.1.format: json
+        io.sherlock.logs.istio-proxy/emptydir.tap-agent-log.1.name: tap-agent-log
+        io.sherlock.logs.istio-proxy/emptydir.tap-agent-log.1.namespace: istio-system
+        io.sherlock.logs.istio-proxy/emptydir.tap-agent-log.1.paths: /dump.log
+        io.sherlock.logs.istio-proxy/emptydir.tap-agent-log.1.schema: tapagentlogevent
+        io.sherlock.logs.istio-proxy/emptydir.tap-agent-log.1.signal: event
+        {{- end }}        
 {{- if $gateway.podAnnotations }}
 {{ toYaml $gateway.podAnnotations | indent 8 }}
 {{ end }}
@@ -244,7 +252,7 @@ spec:
             mountPath: /etc/istio/proxy
           - name: config-volume
             mountPath: /etc/istio/config
-          {{- if .Values.global.proxy.tapAgent.enable }}
+          {{- if eq .Values.global.proxy.tapAgentEnabled true }}
           - name: tap-agent-config
             mountPath: /etc/tap-agent
           - name: tap-agent-log
@@ -281,6 +289,25 @@ spec:
             readOnly: true
           {{- end }}
           {{- end }}
+        {{- if .Values.global.proxy.logRotation.enable }}         
+        - image: "{{ .Values.global.proxy.logRotation.image }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          name: logrotater
+          resources:
+            limits:
+              cpu: 20m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 10Mi
+          volumeMounts:
+          - mountPath: /var/log/proxy
+            name: proxy-accesslogs  
+          {{- if eq .Values.global.proxy.tapAgentEnabled true }}
+          - name: tap-agent-log
+            mountPath: /var/log/tap-agent            
+          {{- end }}            
+        {{ end }}          
 {{- if $gateway.additionalContainers }}
 {{ toYaml $gateway.additionalContainers | indent 8 }}
 {{- end }}
@@ -345,7 +372,7 @@ spec:
           name: {{ .configMapName | quote }}
           optional: true
       {{- end }}
-      {{- if .Values.global.proxy.tapAgent.enable }}  
+      {{- if eq .Values.global.proxy.tapAgentEnabled true }}
       - name: tap-agent-config 
         configMap:
           name: tap-agent-config-cm

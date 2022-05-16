@@ -28,6 +28,14 @@ metadata:
     {{- end }}
     {{ with index .ObjectMeta.Annotations `traffic.sidecar.istio.io/kubevirtInterfaces` }}traffic.sidecar.istio.io/kubevirtInterfaces: "{{.}}",{{ end }}
 {{- end }}
+    {{- if eq .Values.global.proxy.tapAgentEnabled true }}
+    io.sherlock.logs.istio-proxy/emptydir.tap-agent-log.1.format: "json",
+    io.sherlock.logs.istio-proxy/emptydir.tap-agent-log.1.name: "tap-agent-log",
+    io.sherlock.logs.istio-proxy/emptydir.tap-agent-log.1.namespace: "istio-system",
+    io.sherlock.logs.istio-proxy/emptydir.tap-agent-log.1.paths: "/dump.log",
+    io.sherlock.logs.istio-proxy/emptydir.tap-agent-log.1.schema: "tapagentlogevent",
+    io.sherlock.logs.istio-proxy/emptydir.tap-agent-log.1.signal: "event"
+    {{- end }}
   }
 spec:
   {{- $holdProxy := or .ProxyConfig.HoldApplicationUntilProxyStarts.GetValue .Values.global.proxy.holdApplicationUntilProxyStarts }}
@@ -455,7 +463,7 @@ spec:
       {{- end }}
     - name: {{ annotation .ObjectMeta `sidecar.istio.io/accesslogVolumeName` "proxy-accesslogs" }}
       mountPath: /var/log/proxy
-    {{- if .Values.global.proxy.tapAgent.enable }}
+    {{- if eq .Values.global.proxy.tapAgentEnabled true }}
     - name: tap-agent-config
       mountPath: /etc/tap-agent
     - name: tap-agent-log
@@ -479,6 +487,10 @@ spec:
     volumeMounts:
     - mountPath: /var/log/proxy
       name: {{ annotation .ObjectMeta `sidecar.istio.io/accesslogVolumeName` "proxy-accesslogs" }}
+    {{- if eq .Values.global.proxy.tapAgentEnabled true }}
+    - name: tap-agent-log
+      mountPath: /var/log/tap-agent            
+    {{- end }}            
   {{ end }}
   volumes:
   {{- if (isset .ObjectMeta.Annotations `sidecar.istio.io/bootstrapOverride`) }}
@@ -486,7 +498,7 @@ spec:
     configMap:
       name: {{ annotation .ObjectMeta `sidecar.istio.io/bootstrapOverride` "" }}
   {{- end }}
-  {{- if .Values.global.proxy.tapAgent.enable }}  
+  {{- if eq .Values.global.proxy.tapAgentEnabled true }}  
   - name: tap-agent-config 
     configMap:
       name: tap-agent-config-cm

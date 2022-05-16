@@ -382,8 +382,7 @@ global:
     holdApplicationUntilProxyStarts: false
 
     # adds tap-agent config & logs volumeMounts to istio-proxy
-    tapAgent:
-      enable: true
+    tapAgentEnabled: false
 
     logRotation:
       enable: true
