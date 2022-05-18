@@ -92,26 +92,17 @@ func (p Plugin) buildFilter(in *plugin.InputParams, mutable *networking.MutableO
 		return
 	}
 
-	// We will lazily build filters for tcp/http as needed
-	httpBuilt := false
-	tcpBuilt := false
 	var httpFilters []*httppb.HttpFilter
 	var tcpFilters []*tcppb.Filter
 
 	for cnum := range mutable.FilterChains {
 		switch mutable.FilterChains[cnum].ListenerProtocol {
 		case networking.ListenerProtocolTCP:
-			if !tcpBuilt {
-				tcpFilters = b.BuildTCP()
-				tcpBuilt = true
-			}
+			tcpFilters = b.BuildTCP(in.FilterChainOpts[cnum])
 			option.Logger.AppendDebugf("added %d TCP filters to filter chain %d", len(tcpFilters), cnum)
 			mutable.FilterChains[cnum].TCP = append(mutable.FilterChains[cnum].TCP, tcpFilters...)
 		case networking.ListenerProtocolHTTP:
-			if !httpBuilt {
-				httpFilters = b.BuildHTTP()
-				httpBuilt = true
-			}
+			httpFilters = b.BuildHTTP(in.FilterChainOpts[cnum])
 			option.Logger.AppendDebugf("added %d HTTP filters to filter chain %d", len(httpFilters), cnum)
 			mutable.FilterChains[cnum].HTTP = append(mutable.FilterChains[cnum].HTTP, httpFilters...)
 		}

@@ -190,7 +190,16 @@ func (configgen *ConfigGeneratorImpl) buildGatewayListeners(builder *ListenerBui
 			Node:            builder.node,
 			Push:            builder.push,
 			ServiceInstance: si,
+			FilterChainOpts: make([]*plugin.FilterChainOpts, len(mutableopts[lname].opts.filterChainOpts)),
 		}
+
+		for i := range mutableopts[lname].opts.filterChainOpts {
+			pluginParams.FilterChainOpts[i] = &plugin.FilterChainOpts{
+				SniHosts: mutableopts[lname].opts.filterChainOpts[i].sniHosts,
+			}
+		}
+
+		log.Debugf("buildGatewayListeners: invoke plugins for %s:%d ", bind, int(port.Number))
 		for _, p := range configgen.Plugins {
 			if err := p.OnOutboundListener(pluginParams, &mutable.MutableObjects); err != nil {
 				log.Warn("buildGatewayListeners: failed to build listener for gateway: ", err.Error())

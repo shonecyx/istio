@@ -27,6 +27,8 @@ import (
 	"github.com/hashicorp/go-multierror"
 
 	"istio.io/api/annotation"
+	security "istio.io/api/security/v1beta1"
+
 	"istio.io/istio/pilot/pkg/model"
 	"istio.io/istio/pilot/pkg/networking/plugin"
 	"istio.io/istio/pilot/pkg/networking/util"
@@ -96,10 +98,10 @@ func New(trustDomainBundle trustdomain.Bundle, in *plugin.InputParams, option Op
 }
 
 // BuildHTTP returns the HTTP filters built from the authorization policy.
-func (b Builder) BuildHTTP() []*httppb.HttpFilter {
+func (b Builder) BuildHTTP(fcOpts *plugin.FilterChainOpts) []*httppb.HttpFilter {
 	if b.option.IsCustomBuilder {
 		// Use the DENY action so that a HTTP rule is properly handled when generating for TCP filter chain.
-		if configs := b.build(b.customPolicies, rbacpb.RBAC_DENY, false); configs != nil {
+		if configs := b.build(b.customPolicies, rbacpb.RBAC_DENY, false, fcOpts); configs != nil {
 			b.option.Logger.AppendDebugf("built %d HTTP filters for CUSTOM action", len(configs.http))
 			return configs.http
 		}
@@ -107,15 +109,15 @@ func (b Builder) BuildHTTP() []*httppb.HttpFilter {
 	}
 
 	var filters []*httppb.HttpFilter
-	if configs := b.build(b.auditPolicies, rbacpb.RBAC_LOG, false); configs != nil {
+	if configs := b.build(b.auditPolicies, rbacpb.RBAC_LOG, false, fcOpts); configs != nil {
 		b.option.Logger.AppendDebugf("built %d HTTP filters for AUDIT action", len(configs.http))
 		filters = append(filters, configs.http...)
 	}
-	if configs := b.build(b.denyPolicies, rbacpb.RBAC_DENY, false); configs != nil {
+	if configs := b.build(b.denyPolicies, rbacpb.RBAC_DENY, false, fcOpts); configs != nil {
 		b.option.Logger.AppendDebugf("built %d HTTP filters for DENY action", len(configs.http))
 		filters = append(filters, configs.http...)
 	}
-	if configs := b.build(b.allowPolicies, rbacpb.RBAC_ALLOW, false); configs != nil {
+	if configs := b.build(b.allowPolicies, rbacpb.RBAC_ALLOW, false, fcOpts); configs != nil {
 		b.option.Logger.AppendDebugf("built %d HTTP filters for ALLOW action", len(configs.http))
 		filters = append(filters, configs.http...)
 	}
@@ -123,9 +125,9 @@ func (b Builder) BuildHTTP() []*httppb.HttpFilter {
 }
 
 // BuildTCP returns the TCP filters built from the authorization policy.
-func (b Builder) BuildTCP() []*tcppb.Filter {
+func (b Builder) BuildTCP(fcOpts *plugin.FilterChainOpts) []*tcppb.Filter {
 	if b.option.IsCustomBuilder {
-		if configs := b.build(b.customPolicies, rbacpb.RBAC_DENY, true); configs != nil {
+		if configs := b.build(b.customPolicies, rbacpb.RBAC_DENY, true, fcOpts); configs != nil {
 			b.option.Logger.AppendDebugf("built %d TCP filters for CUSTOM action", len(configs.tcp))
 			return configs.tcp
 		}
@@ -133,15 +135,15 @@ func (b Builder) BuildTCP() []*tcppb.Filter {
 	}
 
 	var filters []*tcppb.Filter
-	if configs := b.build(b.auditPolicies, rbacpb.RBAC_LOG, true); configs != nil {
+	if configs := b.build(b.auditPolicies, rbacpb.RBAC_LOG, true, fcOpts); configs != nil {
 		b.option.Logger.AppendDebugf("built %d TCP filters for AUDIT action", len(configs.tcp))
 		filters = append(filters, configs.tcp...)
 	}
-	if configs := b.build(b.denyPolicies, rbacpb.RBAC_DENY, true); configs != nil {
+	if configs := b.build(b.denyPolicies, rbacpb.RBAC_DENY, true, fcOpts); configs != nil {
 		b.option.Logger.AppendDebugf("built %d TCP filters for DENY action", len(configs.tcp))
 		filters = append(filters, configs.tcp...)
 	}
-	if configs := b.build(b.allowPolicies, rbacpb.RBAC_ALLOW, true); configs != nil {
+	if configs := b.build(b.allowPolicies, rbacpb.RBAC_ALLOW, true, fcOpts); configs != nil {
 		b.option.Logger.AppendDebugf("built %d TCP filters for ALLOW action", len(configs.tcp))
 		filters = append(filters, configs.tcp...)
 	}
@@ -176,7 +178,52 @@ func shadowRuleStatPrefix(rule *rbacpb.RBAC) string {
 	}
 }
 
-func (b Builder) build(policies []model.AuthorizationPolicy, action rbacpb.RBAC_Action, forTCP bool) *builtConfigs {
+func intersect(a []string, b []string) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return false
+	}
+
+	l, s := a, b
+	if len(a) < len(b) {
+		l, s = b, a
+	}
+
+	m := make(map[string]struct{})
+
+	for _, v := range l {
+		m[v] = struct{}{}
+	}
+
+	for _, v := range s {
+		if _, exist := m[v]; exist {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (b Builder) skipRule(rule *security.Rule, fcOpts *plugin.FilterChainOpts) bool {
+	if fcOpts == nil {
+		return false
+	}
+
+	// for now only filter out rules for TLS/HTTPS FilterChain
+	if len(fcOpts.SniHosts) == 0 {
+		return false
+	}
+
+	for _, t := range rule.To {
+		if intersect(fcOpts.SniHosts, t.Operation.Hosts) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (b Builder) build(policies []model.AuthorizationPolicy, action rbacpb.RBAC_Action, forTCP bool,
+	fcOpts *plugin.FilterChainOpts) *builtConfigs {
 	if len(policies) == 0 {
 		return nil
 	}
@@ -209,6 +256,10 @@ func (b Builder) build(policies []model.AuthorizationPolicy, action rbacpb.RBAC_
 			providers = append(providers, policy.Spec.GetProvider().GetName())
 		}
 		for i, rule := range policy.Spec.Rules {
+			if b.skipRule(rule, fcOpts) {
+				continue
+			}
+
 			// The name will later be used by ext_authz filter to get the evaluation result from dynamic metadata.
 			name := policyName(policy.Namespace, policy.Name, i, b.option)
 			if rule == nil {

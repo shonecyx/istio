@@ -21,9 +21,14 @@ import (
 	"time"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	rbacpb "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/rbac/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
+	httppb "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	auth "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
+	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
+	"github.com/golang/protobuf/ptypes"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/testing/protocmp"
@@ -31,6 +36,9 @@ import (
 
 	meshconfig "istio.io/api/mesh/v1alpha1"
 	networking "istio.io/api/networking/v1alpha3"
+	security "istio.io/api/security/v1beta1"
+	apitype "istio.io/api/type/v1beta1"
+
 	"istio.io/istio/pilot/pkg/features"
 	pilot_model "istio.io/istio/pilot/pkg/model"
 	"istio.io/istio/pilot/pkg/networking/plugin"
@@ -1945,4 +1953,243 @@ func TestDisableSdsInitialFetchTimeout(t *testing.T) {
 		})
 	}
 
+}
+
+func TestGatewayListenersStripRbacPolicies(t *testing.T) {
+
+	httpsGateway1 := config.Config{
+		Meta: config.Meta{
+			Name:             "gateway-https-1",
+			Namespace:        "default",
+			GroupVersionKind: gvk.Gateway,
+		},
+		Spec: &networking.Gateway{
+			Servers: []*networking.Server{
+				{
+					Port:  &networking.Port{Name: "http", Number: 443, Protocol: "HTTPS"},
+					Hosts: []string{"vip-1.test.com", "alias-1.vip-1.test.com"},
+					Tls:   &networking.ServerTLSSettings{CredentialName: "test", Mode: networking.ServerTLSSettings_SIMPLE},
+				},
+			},
+		},
+	}
+
+	httpsGateway2 := config.Config{
+		Meta: config.Meta{
+			Name:             "gateway-https-2",
+			Namespace:        "default",
+			GroupVersionKind: gvk.Gateway,
+		},
+		Spec: &networking.Gateway{
+			Servers: []*networking.Server{
+				{
+					Port:  &networking.Port{Name: "http", Number: 443, Protocol: "HTTPS"},
+					Hosts: []string{"vip-2.test.com", "alias-1.vip-2.test.com"},
+					Tls:   &networking.ServerTLSSettings{CredentialName: "test", Mode: networking.ServerTLSSettings_SIMPLE},
+				},
+			},
+		},
+	}
+
+	httpGateway1 := config.Config{
+		Meta: config.Meta{
+			Name:             "gateway-http",
+			Namespace:        "default",
+			GroupVersionKind: gvk.Gateway,
+		},
+		Spec: &networking.Gateway{
+			Servers: []*networking.Server{
+				{
+					Hosts: []string{"example.org"},
+					Port:  &networking.Port{Name: "http", Number: 80, Protocol: "HTTP"},
+				},
+			},
+		},
+	}
+
+	authzPolicy1 := config.Config{
+		Meta: config.Meta{
+			Name:             "authz-1",
+			Namespace:        "not-default",
+			GroupVersionKind: gvk.AuthorizationPolicy,
+		},
+		Spec: &security.AuthorizationPolicy{
+			Selector: &apitype.WorkloadSelector{MatchLabels: map[string]string{"istio": "ingressgateway"}},
+			Rules: []*security.Rule{
+				{
+					From: []*security.Rule_From{
+						{
+							Source: &security.Source{
+								Principals: []string{"principal"},
+							},
+						},
+					},
+					To: []*security.Rule_To{
+						{
+							Operation: &security.Operation{
+								Hosts: []string{
+									"vip-1.test.com",
+									"alias-1.vip-1.test.com",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	authzPolicy2 := config.Config{
+		Meta: config.Meta{
+			Name:             "authz-2",
+			Namespace:        "not-default",
+			GroupVersionKind: gvk.AuthorizationPolicy,
+		},
+		Spec: &security.AuthorizationPolicy{
+			Selector: &apitype.WorkloadSelector{MatchLabels: map[string]string{"istio": "ingressgateway"}},
+			Rules: []*security.Rule{
+				{
+					From: []*security.Rule_From{
+						{
+							Source: &security.Source{
+								Principals: []string{"principal"},
+							},
+						},
+					},
+					To: []*security.Rule_To{
+						{
+							Operation: &security.Operation{
+								Hosts: []string{
+									"vip-2.test.com",
+									"alias-1.vip-2.test.com",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	cases := []struct {
+		name                 string
+		gateways             []config.Config
+		authzPolicies        []config.Config
+		expectedRbacPolicies map[string]map[string][]string
+	}{
+		{
+			"gateway with https server",
+			[]config.Config{httpsGateway1},
+			[]config.Config{authzPolicy1, authzPolicy2},
+			map[string]map[string][]string{
+				"0.0.0.0_443": {
+					"vip-1.test.com": {"ns[not-default]-policy[authz-1]-rule[0]"},
+				},
+			},
+		},
+		{
+			"gateway with http server",
+			[]config.Config{httpGateway1},
+			[]config.Config{authzPolicy1, authzPolicy2},
+			map[string]map[string][]string{
+				"0.0.0.0_80": {
+					"": {"ns[not-default]-policy[authz-1]-rule[0]",
+						"ns[not-default]-policy[authz-2]-rule[0]"},
+				},
+			},
+		},
+		{
+			"gateway with multiple https servers",
+			[]config.Config{httpsGateway1, httpsGateway2},
+			[]config.Config{authzPolicy1, authzPolicy2},
+			map[string]map[string][]string{
+				"0.0.0.0_443": {
+					"vip-1.test.com": {"ns[not-default]-policy[authz-1]-rule[0]"},
+					"vip-2.test.com": {"ns[not-default]-policy[authz-2]-rule[0]"},
+				},
+			},
+		},
+	}
+
+	getFilterChain := func(l *listener.Listener, host string) *listener.FilterChain {
+		// In HTTP/TCP case, only one filter chain in listener, and it doesn't have
+		// filter chain match
+		if len(host) == 0 {
+			return l.FilterChains[0]
+		}
+
+		for _, fc := range l.FilterChains {
+
+			for _, s := range fc.FilterChainMatch.ServerNames {
+				if s == host {
+					return fc
+				}
+			}
+		}
+		return nil
+	}
+
+	getRbacPolicies := func(fc *listener.FilterChain) []string {
+		ret := make([]string, 0)
+
+		httpConnMan := xdstest.ExtractHTTPConnectionManager(t, fc)
+
+		for _, filter := range httpConnMan.HttpFilters {
+			if filter.Name != wellknown.HTTPRoleBasedAccessControl {
+				continue
+			}
+
+			rbac := &rbacpb.RBAC{}
+			switch c := filter.ConfigType.(type) {
+			case *httppb.HttpFilter_TypedConfig:
+				// nolint: staticcheck
+				if err := ptypes.UnmarshalAny(c.TypedConfig, rbac); err != nil {
+					t.Fatalf("faild to unmarshal rbac config: %v", err)
+				}
+			}
+
+			for k, _ := range rbac.Rules.Policies {
+				ret = append(ret, k)
+			}
+		}
+
+		return ret
+	}
+
+	for _, tt := range cases {
+
+		t.Run(tt.name, func(t *testing.T) {
+			Configs := make([]config.Config, 0)
+			Configs = append(Configs, tt.gateways...)
+			Configs = append(Configs, tt.authzPolicies...)
+			cg := NewConfigGenTest(t, TestOptions{
+				Configs: Configs,
+				SkipRun: false,
+			})
+			proxy := cg.SetupProxy(&proxyGateway)
+			listeners := cg.ConfigGen.BuildListeners(proxy, cg.PushContext())
+			xdstest.ValidateListeners(t, listeners)
+
+			for listenerName, fcs := range tt.expectedRbacPolicies {
+				l := xdstest.ExtractListener(listenerName, listeners)
+				if l == nil {
+					t.Fatalf("Missing listener %s", listenerName)
+				}
+
+				for host, policies := range fcs {
+					fc := getFilterChain(l, host)
+					if fc == nil {
+						t.Fatalf("Missing filter chain %s", fc)
+					}
+
+					gotPolicies := getRbacPolicies(fc)
+					sort.Strings(gotPolicies)
+					sort.Strings(policies)
+					if !reflect.DeepEqual(gotPolicies, policies) {
+						t.Errorf("Expected RBAC policies %v, got %v", policies, gotPolicies)
+					}
+				}
+			}
+		})
+	}
 }

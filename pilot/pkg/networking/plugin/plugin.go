@@ -42,6 +42,12 @@ type InputParams struct {
 	ServiceInstance *model.ServiceInstance
 	// Push holds stats and other information about the current push.
 	Push *model.PushContext
+
+	FilterChainOpts []*FilterChainOpts
+}
+
+type FilterChainOpts struct {
+	SniHosts []string
 }
 
 // Plugin is called during the construction of a listener.Listener which may alter the Listener in any
