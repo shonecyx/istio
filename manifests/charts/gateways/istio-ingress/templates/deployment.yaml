@@ -291,7 +291,7 @@ spec:
           {{- end }}
         {{- if .Values.global.proxy.logRotation.enable }}         
         - image: "{{ .Values.global.proxy.logRotation.image }}"
-          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          imagePullPolicy: "{{ valueOrDefault .Values.global.proxy.logRotation.imagePullPolicy `IfNotPresent` }}"
           name: logrotater
           resources:
             limits:
