@@ -1627,10 +1627,10 @@ func testOutboundListenerConfigWithSidecarWithTlsContext(t *testing.T, services 
 						Protocol: string(protocol.HTTPS),
 						Name:     "auto-tls-termination",
 					},
-					Hosts: []string{"*/test1.com"},
+					Hosts: []string{"*/test2.com"},
 					Tls: &networking.ServerTLSSettings{
 						Mode:           networking.ServerTLSSettings_SIMPLE,
-						CredentialName: "auto://fake.example.com",
+						CredentialName: "auto://test2.com",
 					},
 				},
 				{
@@ -1639,7 +1639,7 @@ func testOutboundListenerConfigWithSidecarWithTlsContext(t *testing.T, services 
 						Protocol: string(protocol.HTTPS),
 						Name:     "tls-passthrough",
 					},
-					Hosts: []string{"*/test2.com"},
+					Hosts: []string{"*/test3.com"},
 					Tls: &networking.ServerTLSSettings{
 						Mode: networking.ServerTLSSettings_PASSTHROUGH,
 					},
@@ -1668,7 +1668,7 @@ func testOutboundListenerConfigWithSidecarWithTlsContext(t *testing.T, services 
 				AlpnProtocols: []string{"h2", "http/1.1"},
 				TlsCertificateSdsSecretConfigs: []*tls.SdsSecretConfig{
 					{
-						Name:      "auto://fake.example.com",
+						Name:      "auto://test2.com",
 						SdsConfig: authn_model.AutoSdsConfig,
 					},
 				},
@@ -1685,7 +1685,7 @@ func testOutboundListenerConfigWithSidecarWithTlsContext(t *testing.T, services 
 
 	l := findListenerByPort(listeners, 443)
 	if len(l.FilterChains) != 3 {
-		t.Fatalf("expectd %d filter chains, found %d", 2, len(l.FilterChains))
+		t.Fatalf("expectd %d filter chains, found %d", 3, len(l.FilterChains))
 	}
 
 	if !isHTTPFilterChain(l.FilterChains[0]) {

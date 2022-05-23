@@ -1004,6 +1004,9 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundListenerForPortOrUDS(l
 					// In these cases, we just add the services and exit early rather than recreate an identical listener
 					currentListenerEntry.services = append(currentListenerEntry.services, listenerOpts.service)
 					return
+				} else if currentListenerEntry.protocol == protocol.HTTPS && terminateTls {
+					// merge filter chains to current HTTPS listener
+					conflictType = NoConflict
 				} else if currentListenerEntry.protocol.IsTCP() {
 					conflictType = HTTPOverTCP
 				} else {
