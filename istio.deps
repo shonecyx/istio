@@ -4,7 +4,7 @@
     "name": "PROXY_REPO_SHA",
     "repoName": "proxy",
     "file": "",
-    "lastStableSHA": "0708102e41b7832d94734e5125973dad3231bc2a"
+    "lastStableSHA": "799945a324f8e8e8ece2f0bf852808b0cda8603c"
   },
   {
     "_comment": "tap-agent image, as part of istio pilot-agent, for tess istio packet capturing tools",
