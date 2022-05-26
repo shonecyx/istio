@@ -275,6 +275,25 @@ spec:
             readOnly: true
           {{- end }}
           {{- end }}
+          {{- if .Values.global.proxy.logRotation.enable }}
+          - name: proxy-accesslogs
+            mountPath: /var/log/proxy
+          {{ end }}
+        {{- if .Values.global.proxy.logRotation.enable }}
+        - image: "{{ .Values.global.proxy.logRotation.image }}"
+          imagePullPolicy: "{{ $.Values.global.proxy.logRotation.imagePullPolicy | default `IfNotPresent` }}"
+          name: logrotater
+          resources:
+            limits:
+              cpu: 20m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 10Mi
+          volumeMounts:
+          - mountPath: /var/log/proxy
+            name: proxy-accesslogs
+        {{ end }}
 {{- if $gateway.additionalContainers }}
 {{ toYaml $gateway.additionalContainers | indent 8 }}
 {{- end }}
@@ -339,6 +358,10 @@ spec:
           name: {{ .configMapName | quote }}
           optional: true
       {{- end }}
+      {{- if .Values.global.proxy.logRotation.enable }}
+      - emptyDir: {}
+        name: proxy-accesslogs
+      {{ end }}
       affinity:
 {{ include "nodeaffinity" (dict "global" .Values.global "nodeSelector" $gateway.nodeSelector) | trim | indent 8 }}
       {{- include "podAntiAffinity" $gateway | indent 6 }}
