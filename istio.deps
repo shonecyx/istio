@@ -11,7 +11,7 @@
     "name": "TAP_AGENT_VERSION",
     "repoName": "mesh-plugins",
     "file": "",
-    "lastStableSHA": "68f8f14e5c118be6ca5431fdfa7b9b02072b48a1169d5d0a8d8548adf3b70400",
-    "versionTag": "24a631c"
-  }  
-]
+    "versionTag": "24a631c",
+    "lastStableSHA": "68f8f14e5c118be6ca5431fdfa7b9b02072b48a1169d5d0a8d8548adf3b70400"
+  }
+]  
