@@ -120,6 +120,104 @@ func TestBuildSidecarOutboundListenersWithHTTPSTermination(t *testing.T) {
 				},
 			},
 		},
+		{
+			"Sidecar with multiple egress listeners and same port",
+			[]config.Config{
+				{
+					Meta: config.Meta{Name: "foo", Namespace: "ns-config", GroupVersionKind: gvk.ServiceEntry},
+					Spec: &networking.ServiceEntry{
+						Hosts: []string{"foo.com", "a.foo.com", "b.foo.com"},
+						Ports: []*networking.Port{
+							{Name: "https", Number: 443, Protocol: "HTTPS"},
+						},
+						Resolution: networking.ServiceEntry_DNS,
+					},
+				},
+				{
+					Meta: config.Meta{Name: "bar", Namespace: "ns-config", GroupVersionKind: gvk.ServiceEntry},
+					Spec: &networking.ServiceEntry{
+						Hosts: []string{"bar.com", "x.bar.com", "y.bar.com"},
+						Ports: []*networking.Port{
+							{Name: "https", Number: 443, Protocol: "HTTPS"},
+						},
+						Resolution: networking.ServiceEntry_DNS,
+					},
+				},
+			},
+			config.Config{
+				Meta: config.Meta{
+					Name:             "sidecar-egress",
+					Namespace:        sidecarProxy.ConfigNamespace,
+					GroupVersionKind: gvk.Sidecar,
+				},
+				Spec: &networking.Sidecar{
+					Egress: []*networking.IstioEgressListener{
+						{
+							Hosts: []string{"ns-config/foo.com", "ns-config/a.foo.com", "ns-config/b.foo.com"},
+							Port:  &networking.Port{Name: "https", Number: 443, Protocol: "HTTPS"},
+							Tls: &networking.ServerTLSSettings{
+								CredentialName: "auto://foo.com~a.foo.com~b.foo.com",
+								Mode:           networking.ServerTLSSettings_SIMPLE,
+							},
+						},
+						{
+							Hosts: []string{"ns-config/bar.com", "ns-config/x.bar.com", "ns-config/y.bar.com"},
+							Port:  &networking.Port{Name: "https", Number: 443, Protocol: "HTTPS"},
+							Tls: &networking.ServerTLSSettings{
+								CredentialName: "auto://bar.com~x.bar.com~y.bar.com",
+								Mode:           networking.ServerTLSSettings_SIMPLE,
+							},
+						},
+					},
+				},
+			},
+			map[string][]expectedFilterChain{
+				"0.0.0.0_443": {
+					{
+						FilterChainMatch: &listener.FilterChainMatch{
+							ServerNames:       []string{"foo.com"},
+							TransportProtocol: xdsfilters.TLSTransportProtocol,
+						},
+						IsTLS: true,
+					},
+					{
+						FilterChainMatch: &listener.FilterChainMatch{
+							ServerNames:       []string{"a.foo.com"},
+							TransportProtocol: xdsfilters.TLSTransportProtocol,
+						},
+						IsTLS: true,
+					},
+					{
+						FilterChainMatch: &listener.FilterChainMatch{
+							ServerNames:       []string{"b.foo.com"},
+							TransportProtocol: xdsfilters.TLSTransportProtocol,
+						},
+						IsTLS: true,
+					},
+					{
+						FilterChainMatch: &listener.FilterChainMatch{
+							ServerNames:       []string{"bar.com"},
+							TransportProtocol: xdsfilters.TLSTransportProtocol,
+						},
+						IsTLS: true,
+					},
+					{
+						FilterChainMatch: &listener.FilterChainMatch{
+							ServerNames:       []string{"x.bar.com"},
+							TransportProtocol: xdsfilters.TLSTransportProtocol,
+						},
+						IsTLS: true,
+					},
+					{
+						FilterChainMatch: &listener.FilterChainMatch{
+							ServerNames:       []string{"y.bar.com"},
+							TransportProtocol: xdsfilters.TLSTransportProtocol,
+						},
+						IsTLS: true,
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range cases {
@@ -133,8 +231,6 @@ func TestBuildSidecarOutboundListenersWithHTTPSTermination(t *testing.T) {
 
 		listeners := cg.ConfigGen.buildSidecarOutboundListeners(proxy, cg.env.PushContext)
 		actualListeners := xdstest.ExtractListenerNames(listeners)
-
-		// t.Log(xdstest.DumpList(t, xdstest.InterfaceSlice(listeners)))
 
 		expectedListeners := make([]string, 0, len(tt.expectedListeners))
 		for k := range tt.expectedListeners {
@@ -179,5 +275,4 @@ func TestBuildSidecarOutboundListenersWithHTTPSTermination(t *testing.T) {
 
 		xdstest.ValidateListeners(t, listeners)
 	}
-
 }

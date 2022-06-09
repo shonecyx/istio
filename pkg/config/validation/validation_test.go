@@ -5304,7 +5304,7 @@ func TestValidateSidecar(t *testing.T) {
 				},
 			},
 		}, false},
-		{"duplicate ports", &networking.Sidecar{
+		{"egress TCP with duplicate ports", &networking.Sidecar{
 			Egress: []*networking.IstioEgressListener{
 				{
 					Port: &networking.Port{
@@ -5328,6 +5328,54 @@ func TestValidateSidecar(t *testing.T) {
 				},
 			},
 		}, false},
+		{"egress HTTP with duplicate ports", &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						Protocol: "http",
+						Number:   80,
+						Name:     "foo",
+					},
+					Hosts: []string{
+						"ns1/foo.com",
+					},
+				},
+				{
+					Port: &networking.Port{
+						Protocol: "http",
+						Number:   80,
+						Name:     "bar",
+					},
+					Hosts: []string{
+						"ns2/bar.com",
+					},
+				},
+			},
+		}, false},
+		{"egress HTTPS with duplicate ports", &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						Protocol: "https",
+						Number:   443,
+						Name:     "foo",
+					},
+					Hosts: []string{
+						"ns1/foo.com",
+					},
+				},
+				{
+					Port: &networking.Port{
+						Protocol: "https",
+						Number:   443,
+						Name:     "bar",
+					},
+					Hosts: []string{
+						"ns2/bar.com",
+					},
+				},
+			},
+		}, true},
 		{"ingress without port", &networking.Sidecar{
 			Ingress: []*networking.IstioIngressListener{
 				{

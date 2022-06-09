@@ -1026,7 +1026,10 @@ var ValidateSidecar = registerValidateFunc("ValidateSidecar",
 					udsMap[bind] = struct{}{}
 				} else {
 					if _, found := portMap[i.Port.Number]; found {
-						errs = appendErrors(errs, fmt.Errorf("sidecar: ports on IP bound listeners must be unique"))
+						proto := protocol.Parse(i.Port.Protocol)
+						if !proto.IsTLS() {
+							errs = appendErrors(errs, fmt.Errorf("sidecar: ports on IP bound listeners must be unique for protocol %s", proto))
+						}
 					}
 					portMap[i.Port.Number] = struct{}{}
 				}
