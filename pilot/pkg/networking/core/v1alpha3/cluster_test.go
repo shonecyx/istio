@@ -872,7 +872,6 @@ func TestBuildAutoMtlsSettings(t *testing.T) {
 		name            string
 		tls             *networking.ClientTLSSettings
 		sans            []string
-		sni             string
 		proxy           *model.Proxy
 		autoMTLSEnabled bool
 		meshExternal    bool
@@ -884,7 +883,6 @@ func TestBuildAutoMtlsSettings(t *testing.T) {
 			"Destination rule TLS sni and SAN override",
 			tlsSettings,
 			[]string{"spiffe://foo/serviceaccount/1"},
-			"foo.com",
 			&model.Proxy{Metadata: &model.NodeMetadata{}},
 			false, false, model.MTLSUnknown,
 			tlsSettings,
@@ -901,13 +899,11 @@ func TestBuildAutoMtlsSettings(t *testing.T) {
 				Sni:               "",
 			},
 			[]string{"spiffe://foo/serviceaccount/1"},
-			"foo.com",
 			&model.Proxy{Metadata: &model.NodeMetadata{}},
 			false, false, model.MTLSUnknown,
 			&networking.ClientTLSSettings{
 				Mode:            networking.ClientTLSSettings_ISTIO_MUTUAL,
 				SubjectAltNames: []string{"spiffe://foo/serviceaccount/1"},
-				Sni:             "foo.com",
 			},
 			userSupplied,
 		},
@@ -915,7 +911,6 @@ func TestBuildAutoMtlsSettings(t *testing.T) {
 			"Cert path override",
 			tlsSettings,
 			[]string{},
-			"",
 			&model.Proxy{Metadata: &model.NodeMetadata{
 				TLSClientCertChain: "/custom/chain.pem",
 				TLSClientKey:       "/custom/key.pem",
@@ -936,13 +931,11 @@ func TestBuildAutoMtlsSettings(t *testing.T) {
 			"Auto fill nil settings when mTLS nil for internal service in strict mode",
 			nil,
 			[]string{"spiffe://foo/serviceaccount/1"},
-			"foo.com",
 			&model.Proxy{Metadata: &model.NodeMetadata{}},
 			true, false, model.MTLSStrict,
 			&networking.ClientTLSSettings{
 				Mode:            networking.ClientTLSSettings_ISTIO_MUTUAL,
 				SubjectAltNames: []string{"spiffe://foo/serviceaccount/1"},
-				Sni:             "foo.com",
 			},
 			autoDetected,
 		},
@@ -950,13 +943,11 @@ func TestBuildAutoMtlsSettings(t *testing.T) {
 			"Auto fill nil settings when mTLS nil for internal service in permissive mode",
 			nil,
 			[]string{"spiffe://foo/serviceaccount/1"},
-			"foo.com",
 			&model.Proxy{Metadata: &model.NodeMetadata{}},
 			true, false, model.MTLSPermissive,
 			&networking.ClientTLSSettings{
 				Mode:            networking.ClientTLSSettings_ISTIO_MUTUAL,
 				SubjectAltNames: []string{"spiffe://foo/serviceaccount/1"},
-				Sni:             "foo.com",
 			},
 			autoDetected,
 		},
@@ -964,7 +955,6 @@ func TestBuildAutoMtlsSettings(t *testing.T) {
 			"Auto fill nil settings when mTLS nil for internal service in plaintext mode",
 			nil,
 			[]string{"spiffe://foo/serviceaccount/1"},
-			"foo.com",
 			&model.Proxy{Metadata: &model.NodeMetadata{}},
 			true, false, model.MTLSDisable,
 			nil,
@@ -974,7 +964,6 @@ func TestBuildAutoMtlsSettings(t *testing.T) {
 			"Auto fill nil settings when mTLS nil for internal service in unknown mode",
 			nil,
 			[]string{"spiffe://foo/serviceaccount/1"},
-			"foo.com",
 			&model.Proxy{Metadata: &model.NodeMetadata{}},
 			true, false, model.MTLSUnknown,
 			nil,
@@ -984,7 +973,6 @@ func TestBuildAutoMtlsSettings(t *testing.T) {
 			"Do not auto fill nil settings for external",
 			nil,
 			[]string{"spiffe://foo/serviceaccount/1"},
-			"foo.com",
 			&model.Proxy{Metadata: &model.NodeMetadata{}},
 			true, true, model.MTLSUnknown,
 			nil,
@@ -994,7 +982,6 @@ func TestBuildAutoMtlsSettings(t *testing.T) {
 			"Do not auto fill nil settings if server mTLS is disabled",
 			nil,
 			[]string{"spiffe://foo/serviceaccount/1"},
-			"foo.com",
 			&model.Proxy{Metadata: &model.NodeMetadata{}},
 			false, false, model.MTLSDisable,
 			nil,
@@ -1004,7 +991,7 @@ func TestBuildAutoMtlsSettings(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotTLS, gotCtxType := buildAutoMtlsSettings(tt.tls, tt.sans, tt.sni, tt.proxy,
+			gotTLS, gotCtxType := buildAutoMtlsSettings(tt.tls, tt.sans, tt.proxy,
 				tt.autoMTLSEnabled, tt.meshExternal, tt.serviceMTLSMode)
 			if !reflect.DeepEqual(gotTLS, tt.want) {
 				t.Errorf("cluster TLS does not match expected result want %#v, got %#v", tt.want, gotTLS)
