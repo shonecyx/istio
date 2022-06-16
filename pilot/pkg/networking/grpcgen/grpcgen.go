@@ -180,11 +180,15 @@ func (g *GrpcConfigGenerator) BuildHTTPRoutes(node *model.Proxy, push *model.Pus
 			log.Warn("Failed to parse port ", n, " ", err)
 			continue
 		}
-		el := node.SidecarScope.GetEgressListenerForRDS(port, "", "")
+		egressListeners := node.SidecarScope.GetEgressListenerForRDS(port, "", "")
 		// TODO: use VirtualServices instead !
 		// Currently gRPC doesn't support matching the path.
-		svc := el.Services()
-		for _, s := range svc {
+		services := make([]*model.Service, 0)
+		for _, egressListener := range egressListeners {
+			services = append(services, egressListener.Services()...)
+		}
+
+		for _, s := range services {
 			if s.Hostname.Matches(host.Name(hn)) {
 				// Only generate the required route for grpc. Will need to generate more
 				// as GRPC adds more features.

@@ -1075,6 +1075,154 @@ func TestSidecarOutboundHTTPRouteConfig(t *testing.T) {
 	}
 }
 
+func TestSidecarOutboundHTTPRouteConfigWithMultiEgressSamePort(t *testing.T) {
+	services := []*model.Service{
+		buildHTTPService("foo.com", visibility.Public, wildcardIP, "default", 80, 8080),
+		buildHTTPService("abc.foo.com", visibility.Public, wildcardIP, "default", 80, 8080),
+		buildHTTPService("bar.com", visibility.Public, wildcardIP, "default", 80, 8080),
+	}
+
+	sidecarConfigWithMultiEgress := &config.Config{
+		Meta: config.Meta{
+			Name:      "foo",
+			Namespace: "not-default",
+		},
+		Spec: &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						// A port that is not in any of the services
+						Number:   80,
+						Protocol: "HTTP",
+						Name:     "foo",
+					},
+					Hosts: []string{
+						"*/foo.com",
+						"*/abc.foo.com",
+					},
+				},
+				{
+					Port: &networking.Port{
+						// A port that is in one of the services
+						Number:   80,
+						Protocol: "HTTP",
+						Name:     "bar",
+					},
+					Hosts: []string{
+						"*/bar.com",
+					},
+				},
+			},
+		},
+	}
+
+	virtualServiceSpec1 := &networking.VirtualService{
+		Hosts:    []string{"foo.com", "abc.foo.com"},
+		Gateways: []string{"mesh"},
+		Http: []*networking.HTTPRoute{
+			{
+				Route: []*networking.HTTPRouteDestination{
+					{
+						Destination: &networking.Destination{
+							Subset: "subset",
+							Host:   "foo.com",
+							Port: &networking.PortSelector{
+								Number: 80,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	virtualServiceSpec2 := &networking.VirtualService{
+		Hosts:    []string{"bar.com"},
+		Gateways: []string{"mesh"},
+		Http: []*networking.HTTPRoute{
+			{
+				Route: []*networking.HTTPRouteDestination{
+					{
+						Destination: &networking.Destination{
+							Subset: "subset",
+							Host:   "bar.com",
+							Port: &networking.PortSelector{
+								Number: 80,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	virtualService1 := config.Config{
+		Meta: config.Meta{
+			GroupVersionKind: collections.IstioNetworkingV1Alpha3Virtualservices.Resource().GroupVersionKind(),
+			Name:             "foo",
+			Namespace:        "not-default",
+		},
+		Spec: virtualServiceSpec1,
+	}
+	virtualService2 := config.Config{
+		Meta: config.Meta{
+			GroupVersionKind: collections.IstioNetworkingV1Alpha3Virtualservices.Resource().GroupVersionKind(),
+			Name:             "bar",
+			Namespace:        "not-default",
+		},
+		Spec: virtualServiceSpec2,
+	}
+
+	cases := []struct {
+		name                  string
+		routeName             string
+		sidecarConfig         *config.Config
+		virtualServiceConfigs []*config.Config
+		// virtualHost Name and domains
+		expectedHosts map[string]map[string]bool
+		registryOnly  bool
+	}{
+		{
+			name:                  "sidecar with multiple egress listener and without virtual service",
+			routeName:             "80",
+			sidecarConfig:         sidecarConfigWithMultiEgress,
+			virtualServiceConfigs: nil,
+			expectedHosts: map[string]map[string]bool{
+				// domains has '*.' prefix is because service.Resolution == model.Passthrough
+				"foo.com:80":     {"foo.com": true, "foo.com:80": true, "*.foo.com": true, "*.foo.com:80": true},
+				"abc.foo.com:80": {"abc.foo.com": true, "abc.foo.com:80": true, "*.abc.foo.com": true, "*.abc.foo.com:80": true},
+				"bar.com:80":     {"bar.com": true, "bar.com:80": true, "*.bar.com": true, "*.bar.com:80": true},
+				"block_all": {
+					"*": true,
+				},
+			},
+			registryOnly: true,
+		},
+		{
+			name:                  "sidecar with multiple egress listener and virtual service",
+			routeName:             "80",
+			sidecarConfig:         sidecarConfigWithMultiEgress,
+			virtualServiceConfigs: []*config.Config{&virtualService1, &virtualService2},
+			expectedHosts: map[string]map[string]bool{
+				// domains has '*.' prefix is because service.Resolution == model.Passthrough
+				"foo.com:80":     {"foo.com": true, "foo.com:80": true, "*.foo.com": true, "*.foo.com:80": true},
+				"abc.foo.com:80": {"abc.foo.com": true, "abc.foo.com:80": true, "*.abc.foo.com": true, "*.abc.foo.com:80": true},
+				"bar.com:80":     {"bar.com": true, "bar.com:80": true, "*.bar.com": true, "*.bar.com:80": true},
+				"block_all": {
+					"*": true,
+				},
+			},
+			registryOnly: true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			testSidecarRDSVHosts(t, services, c.sidecarConfig, c.virtualServiceConfigs,
+				c.routeName, c.expectedHosts, c.registryOnly)
+		})
+	}
+}
+
 func TestSidecarOutboundHTTPRouteConfigWithHTTPS(t *testing.T) {
 	services := []*model.Service{
 		buildHTTPSService("bookinfo.com", visibility.Public, wildcardIP, "default", 9999, 70),
@@ -1255,6 +1403,9 @@ func testSidecarRDSVHosts(t *testing.T, services []*model.Service,
 
 	vHostCache := make(map[int][]*route.VirtualHost)
 	routeCfg := configgen.buildSidecarOutboundHTTPRouteConfig(proxy, env.PushContext, routeName, vHostCache)
+
+	t.Log(xdstest.DumpList(t, xdstest.InterfaceSlice([]*route.RouteConfiguration{routeCfg})))
+
 	xdstest.ValidateRouteConfiguration(t, routeCfg)
 	if routeCfg == nil {
 		t.Fatalf("got nil route for %s", routeName)

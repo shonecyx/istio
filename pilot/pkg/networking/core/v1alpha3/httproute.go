@@ -217,23 +217,27 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundVirtualHosts(node *mod
 	// egress listener only. A route with sniffing would not have been generated if there
 	// was a sidecar with explicit port (and hence protocol declaration). A route with
 	// sniffing is generated only in the case of the catch all egress listener.
-	egressListener := node.SidecarScope.GetEgressListenerForRDS(listenerPort, routeName, host.Name(hostname))
+	egressListeners := node.SidecarScope.GetEgressListenerForRDS(listenerPort, routeName, host.Name(hostname))
 	// We should never be getting a nil egress listener because the code that setup this RDS
 	// call obviously saw an egress listener
-	if egressListener == nil {
+	if len(egressListeners) == 0 {
 		return nil
 	}
 
-	services = egressListener.Services()
-	// To maintain correctness, we should only use the virtualservices for
-	// this listener and not all virtual services accessible to this proxy.
-	virtualServices = egressListener.VirtualServices()
+	services = make([]*model.Service, 0)
+	virtualServices = make([]config.Config, 0)
+	for _, egressListener := range egressListeners {
+		services = append(services, egressListener.Services()...)
+		// To maintain correctness, we should only use the virtualservices for
+		// this listener and not all virtual services accessible to this proxy.
+		virtualServices = append(virtualServices, egressListener.VirtualServices()...)
 
-	// When generating RDS for ports created via the SidecarScope, we treat ports as HTTP proxy style ports
-	// if ports protocol is HTTP_PROXY.
-	if egressListener.IstioListener != nil && egressListener.IstioListener.Port != nil &&
-		protocol.Parse(egressListener.IstioListener.Port.Protocol) == protocol.HTTP_PROXY {
-		listenerPort = 0
+		// When generating RDS for ports created via the SidecarScope, we treat ports as HTTP proxy style ports
+		// if ports protocol is HTTP_PROXY.
+		if egressListener.IstioListener != nil && egressListener.IstioListener.Port != nil &&
+			protocol.Parse(egressListener.IstioListener.Port.Protocol) == protocol.HTTP_PROXY {
+			listenerPort = 0
+		}
 	}
 
 	nameToServiceMap := make(map[host.Name]*model.Service)

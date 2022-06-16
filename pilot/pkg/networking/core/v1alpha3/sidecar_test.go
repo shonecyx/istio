@@ -7,6 +7,7 @@ import (
 
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	networking "istio.io/api/networking/v1alpha3"
+	"istio.io/istio/pilot/pkg/xds/filters"
 	xdsfilters "istio.io/istio/pilot/pkg/xds/filters"
 
 	"istio.io/istio/pilot/pkg/model"
@@ -275,4 +276,134 @@ func TestBuildSidecarOutboundListenersWithHTTPSTermination(t *testing.T) {
 
 		xdstest.ValidateListeners(t, listeners)
 	}
+}
+
+func TestBuildSidecarOutboundListenersWithMultipleEgressListeners(t *testing.T) {
+
+	sidecarProxy := model.Proxy{
+		Type:        model.SidecarProxy,
+		IPAddresses: []string{"1.1.1.1"},
+		ID:          "v0.default",
+		DNSDomain:   "default.example.org",
+		Metadata: &model.NodeMetadata{
+			Namespace: "not-default",
+		},
+		ConfigNamespace: "not-default",
+	}
+
+	type expectedFilterChain struct {
+		FilterChainMatch *listener.FilterChainMatch
+	}
+
+	cases := []struct {
+		name              string
+		serviceEntries    []config.Config
+		sidecar           config.Config
+		expectedListeners map[string][]expectedFilterChain
+	}{
+		{
+			"sidecar egress to services with same port",
+			[]config.Config{
+				{
+					Meta: config.Meta{Name: "foo", Namespace: "ns-config", GroupVersionKind: gvk.ServiceEntry},
+					Spec: &networking.ServiceEntry{
+						Hosts: []string{"foo.com", "a.foo.com", "b.foo.com"},
+						Ports: []*networking.Port{
+							{Name: "http", Number: 80, Protocol: "HTTP"},
+						},
+						Resolution: networking.ServiceEntry_DNS,
+					},
+				},
+				{
+					Meta: config.Meta{Name: "bar", Namespace: "ns-config", GroupVersionKind: gvk.ServiceEntry},
+					Spec: &networking.ServiceEntry{
+						Hosts: []string{"bar.com", "x.bar.com", "y.bar.com"},
+						Ports: []*networking.Port{
+							{Name: "http", Number: 80, Protocol: "HTTP"},
+						},
+						Resolution: networking.ServiceEntry_DNS,
+					},
+				},
+			},
+			config.Config{
+				Meta: config.Meta{
+					Name:             "sidecar-egress",
+					Namespace:        sidecarProxy.ConfigNamespace,
+					GroupVersionKind: gvk.Sidecar,
+				},
+				Spec: &networking.Sidecar{
+					Egress: []*networking.IstioEgressListener{
+						{
+							Hosts: []string{"ns-config/foo.com", "ns-config/a.foo.com", "ns-config/b.foo.com"},
+							Port:  &networking.Port{Name: "http", Number: 80, Protocol: "HTTP"},
+						},
+						{
+							Hosts: []string{"ns-config/bar.com", "ns-config/x.bar.com", "ns-config/y.bar.com"},
+							Port:  &networking.Port{Name: "http", Number: 80, Protocol: "HTTP"},
+						},
+					},
+				},
+			},
+			map[string][]expectedFilterChain{
+				"0.0.0.0_80": {
+					{
+						FilterChainMatch: &listener.FilterChainMatch{
+							TransportProtocol:    filters.RawBufferTransportProtocol,
+							ApplicationProtocols: []string{"http/1.0", "http/1.1", "h2c"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range cases {
+		Configs := make([]config.Config, 0)
+		Configs = append(Configs, tt.serviceEntries...)
+		cg := NewConfigGenTest(t, TestOptions{
+			Configs:        Configs,
+			ConfigPointers: []*config.Config{&tt.sidecar},
+		})
+		proxy := cg.SetupProxy(&sidecarProxy)
+
+		listeners := cg.ConfigGen.buildSidecarOutboundListeners(proxy, cg.env.PushContext)
+		actualListeners := xdstest.ExtractListenerNames(listeners)
+
+		t.Log(xdstest.DumpList(t, xdstest.InterfaceSlice(listeners)))
+
+		expectedListeners := make([]string, 0, len(tt.expectedListeners))
+		for k := range tt.expectedListeners {
+			expectedListeners = append(expectedListeners, k)
+		}
+
+		sort.Strings(expectedListeners)
+		sort.Strings(actualListeners)
+		if !reflect.DeepEqual(expectedListeners, actualListeners) {
+			t.Fatalf("Expected listeners: %v, got: %v", expectedListeners, actualListeners)
+		}
+
+		for k, v := range tt.expectedListeners {
+			l := xdstest.ExtractListener(k, listeners)
+			if len(l.FilterChains) != len(v) {
+				t.Fatalf("Expected filter chain number: %v, got: %v", len(v), len(l.FilterChains))
+			}
+
+			for _, efc := range v {
+				fc := l.FilterChains[0]
+
+				if !isHTTPFilterChain(fc) {
+					t.Fatalf("expected http filter chain, found %s", fc.Filters[0].Name)
+				}
+
+				if !filterChainMatchEqual(efc.FilterChainMatch, l.FilterChains[0].FilterChainMatch) {
+					t.Fatalf("expected http filter chain match: %v, got %v", efc.FilterChainMatch, l.FilterChains[0].FilterChainMatch)
+				}
+
+				verifyHTTPFilterChainMatch(t, fc, model.TrafficDirectionOutbound, false)
+			}
+		}
+
+		xdstest.ValidateListeners(t, listeners)
+	}
+
 }

@@ -496,16 +496,19 @@ func (sc *SidecarScope) DestinationRule(hostname host.Name) *config.Config {
 
 // GetEgressListenerForRDS returns the egress listener corresponding to
 // the listener port or the bind address or the catch all listener
-func (sc *SidecarScope) GetEgressListenerForRDS(port int, bind string, host host.Name) *IstioEgressListenerWrapper {
+func (sc *SidecarScope) GetEgressListenerForRDS(port int, bind string, host host.Name) []*IstioEgressListenerWrapper {
 	if sc == nil {
 		return nil
 	}
 
+	out := make([]*IstioEgressListenerWrapper, 0)
+	var catchall *IstioEgressListenerWrapper
 	for _, e := range sc.EgressListeners {
 		// We hit a catchall listener. This is the last listener in the list of listeners
 		// return as is
 		if e.IstioListener == nil || e.IstioListener.Port == nil {
-			return e
+			catchall = e
+			break
 		}
 
 		// Check if the ports match
@@ -513,28 +516,32 @@ func (sc *SidecarScope) GetEgressListenerForRDS(port int, bind string, host host
 		if int(e.IstioListener.Port.Number) == port {
 			if port == 0 { // unix domain socket
 				if e.IstioListener.Bind == bind {
-					return e
+					out = append(out, e)
 				}
-				// no match.. continue searching
+				// continue searching
 				continue
 			}
 
 			if host == "" {
 				// this is a non-zero port match
-				return e
+				out = append(out, e)
+				continue
 			}
 
 			for _, s := range e.services {
 				if s.Hostname.Matches(host) {
-					return e
+					out = append(out, e)
+					break
 				}
 			}
 		}
 	}
 
-	// This should never be reached unless user explicitly set an empty array for egress
-	// listeners which we actually forbid
-	return nil
+	if len(out) == 0 {
+		return []*IstioEgressListenerWrapper{catchall}
+	}
+
+	return out
 }
 
 // Services returns the list of services imported by this egress listener

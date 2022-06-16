@@ -1027,7 +1027,7 @@ var ValidateSidecar = registerValidateFunc("ValidateSidecar",
 				} else {
 					if _, found := portMap[i.Port.Number]; found {
 						proto := protocol.Parse(i.Port.Protocol)
-						if !proto.IsTLS() {
+						if !proto.IsTLS() && !proto.IsHTTP() {
 							errs = appendErrors(errs, fmt.Errorf("sidecar: ports on IP bound listeners must be unique for protocol %s", proto))
 						}
 					}
