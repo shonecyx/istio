@@ -23,6 +23,7 @@ import (
 
 	"istio.io/api/mesh/v1alpha1"
 	networking "istio.io/api/networking/v1alpha3"
+	"istio.io/istio/pilot/pkg/features"
 	"istio.io/istio/pkg/config"
 	"istio.io/istio/pkg/config/constants"
 	"istio.io/istio/pkg/config/host"
@@ -396,6 +397,66 @@ var (
 		},
 	}
 
+	configs18 = &config.Config{
+		Meta: config.Meta{
+			Name:      "sidecar-scope-with-egress-port",
+			Namespace: "not-default",
+		},
+		Spec: &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						Number:   7000,
+						Protocol: "HTTP",
+						Name:     "uds",
+					},
+					Hosts: []string{"ns1/*"},
+				},
+			},
+		},
+	}
+
+	configs19 = &config.Config{
+		Meta: config.Meta{
+			Name:      "sidecar-scope-without-egress-port",
+			Namespace: "not-default",
+		},
+		Spec: &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Hosts: []string{"ns1/*"},
+				},
+			},
+		},
+	}
+
+	configs20 = &config.Config{
+		Meta: config.Meta{
+			Name:      "sidecar-scope-with-egress-ports",
+			Namespace: "not-default",
+		},
+		Spec: &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						Number:   7000,
+						Protocol: "HTTP",
+						Name:     "uds",
+					},
+					Hosts: []string{"ns1/*"},
+				},
+				{
+					Port: &networking.Port{
+						Number:   8000,
+						Protocol: "HTTP",
+						Name:     "uds",
+					},
+					Hosts: []string{"ns1/*"},
+				},
+			},
+		},
+	}
+
 	services1 = []*Service{
 		{Hostname: "bar"},
 	}
@@ -686,6 +747,33 @@ var (
 		},
 	}
 
+	services20 = []*Service{
+		{
+			Hostname: "foo.svc.cluster.local",
+			Ports:    port8000,
+			Attributes: ServiceAttributes{
+				Name:      "foo",
+				Namespace: "ns1",
+			},
+		},
+		{
+			Hostname: "bar.svc.cluster.local",
+			Ports:    twoPorts,
+			Attributes: ServiceAttributes{
+				Name:      "bar",
+				Namespace: "ns1",
+			},
+		},
+		{
+			Hostname: "baz.svc.cluster.local",
+			Ports:    twoPorts,
+			Attributes: ServiceAttributes{
+				Name:      "baz",
+				Namespace: "ns1",
+			},
+		},
+	}
+
 	virtualServices1 = []config.Config{
 		{
 			Meta: config.Meta{
@@ -699,6 +787,27 @@ var (
 					{
 						Mirror: &networking.Destination{Host: "foo.svc.cluster.local"},
 						Route:  []*networking.HTTPRouteDestination{{Destination: &networking.Destination{Host: "baz.svc.cluster.local"}}},
+					},
+				},
+			},
+		},
+	}
+
+	virtualServices2 = []config.Config{
+		{
+			Meta: config.Meta{
+				GroupVersionKind: collections.IstioNetworkingV1Alpha3Virtualservices.Resource().GroupVersionKind(),
+				Name:             "vs",
+				Namespace:        "ns1",
+			},
+			Spec: &networking.VirtualService{
+				Hosts: []string{
+					"bar.svc.cluster.local",
+					"baz.svc.cluster.local",
+				},
+				Http: []*networking.HTTPRoute{
+					{
+						Route: []*networking.HTTPRouteDestination{{Destination: &networking.Destination{Host: "foo.svc.cluster.local"}}},
 					},
 				},
 			},
@@ -1227,6 +1336,168 @@ func TestCreateSidecarScope(t *testing.T) {
 				}
 			}
 			// TODO destination rule
+		})
+	}
+}
+
+func TestCreateSidecarScopeWithFilterSidecarCluster(t *testing.T) {
+
+	features.FilterSidecarClusterConfig = true
+	defer func() {
+		features.FilterSidecarClusterConfig = false
+	}()
+
+	// run test cases in TestCreateSidecarScope, this is for making sure features.FilterSidecarClusterConfig
+	// doesn't break existing behaviors
+	TestCreateSidecarScope(t)
+
+	tests := []struct {
+		name          string
+		sidecarConfig *config.Config
+		// list of available service for a given proxy
+		services        []*Service
+		virtualServices []config.Config
+		// list of services expected to be in the listener
+		excpectedServices []*Service
+	}{
+		{
+			"virtual-service-with-inferred-outbound-cluster",
+			configs18,
+			services20,
+			virtualServices2,
+			[]*Service{
+				{
+					Hostname: "foo.svc.cluster.local",
+					Ports:    port8000,
+				},
+			},
+		},
+		{
+			"virtual-service-without-egress-port",
+			configs19,
+			services20,
+			virtualServices2,
+			[]*Service{
+				{
+					Hostname: "foo.svc.cluster.local",
+					Ports:    port8000,
+				},
+				{
+					Hostname: "bar.svc.cluster.local",
+					Ports:    twoPorts,
+				},
+				{
+					Hostname: "baz.svc.cluster.local",
+					Ports:    twoPorts,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var found bool
+			ps := NewPushContext()
+			meshConfig := mesh.DefaultMeshConfig()
+			ps.Mesh = &meshConfig
+			if tt.services != nil {
+				ps.ServiceIndex.public = append(ps.ServiceIndex.public, tt.services...)
+
+				for _, s := range tt.services {
+					if _, f := ps.ServiceIndex.HostnameAndNamespace[s.Hostname]; !f {
+						ps.ServiceIndex.HostnameAndNamespace[s.Hostname] = map[string]*Service{}
+					}
+					ps.ServiceIndex.HostnameAndNamespace[s.Hostname][s.Attributes.Namespace] = s
+				}
+			}
+			if tt.virtualServices != nil {
+				// nolint lll
+				ps.virtualServiceIndex.publicByGateway[constants.IstioMeshGateway] = append(ps.virtualServiceIndex.publicByGateway[constants.IstioMeshGateway], tt.virtualServices...)
+			}
+
+			ps.exportToDefaults = exportToDefaults{
+				virtualService:  map[visibility.Instance]bool{visibility.Public: true},
+				service:         map[visibility.Instance]bool{visibility.Public: true},
+				destinationRule: map[visibility.Instance]bool{visibility.Public: true},
+			}
+
+			sidecarConfig := tt.sidecarConfig
+			sidecarScope := ConvertToSidecarScope(ps, sidecarConfig, "mynamespace")
+			configuredListeneres := 1
+			if sidecarConfig != nil {
+				r := sidecarConfig.Spec.(*networking.Sidecar)
+				if len(r.Egress) > 0 {
+					configuredListeneres = len(r.Egress)
+				}
+			}
+
+			numberListeners := len(sidecarScope.EgressListeners)
+			if numberListeners != configuredListeneres {
+				t.Errorf("Expected %d listeners, Got: %d", configuredListeneres, numberListeners)
+			}
+
+			if sidecarConfig != nil {
+				a := sidecarConfig.Spec.(*networking.Sidecar)
+				for _, egress := range a.Egress {
+					for _, egressHost := range egress.Hosts {
+						parts := strings.SplitN(egressHost, "/", 2)
+						if len(parts) < 2 {
+							continue
+						}
+						found = false
+						for _, listeners := range sidecarScope.EgressListeners {
+							if sidecarScopeHosts, ok := listeners.listenerHosts[parts[0]]; ok {
+								for _, sidecarScopeHost := range sidecarScopeHosts {
+									if sidecarScopeHost == host.Name(parts[1]) &&
+										listeners.IstioListener.Port == egress.Port {
+										found = true
+										break
+									}
+								}
+							}
+							if found {
+								break
+							}
+						}
+						if !found {
+							t.Errorf("Did not find %v entry in any listener", egressHost)
+						}
+					}
+				}
+			}
+
+			for _, s1 := range sidecarScope.services {
+				found = false
+				for _, s2 := range tt.excpectedServices {
+					if s1.Hostname == s2.Hostname {
+						if len(s2.Ports) > 0 {
+							if reflect.DeepEqual(s2.Ports, s1.Ports) {
+								found = true
+								break
+							}
+						} else {
+							found = true
+							break
+						}
+					}
+				}
+				if !found {
+					t.Errorf("Unexpected service %v found in SidecarScope", s1.Hostname)
+				}
+			}
+
+			for _, s1 := range tt.excpectedServices {
+				found = false
+				for _, s2 := range sidecarScope.services {
+					if s1.Hostname == s2.Hostname {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected service %v in SidecarScope, but did not find it", s1.Hostname)
+				}
+			}
 		})
 	}
 }

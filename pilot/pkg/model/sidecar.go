@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	networking "istio.io/api/networking/v1alpha3"
+	"istio.io/istio/pilot/pkg/features"
 	"istio.io/istio/pkg/config"
 	"istio.io/istio/pkg/config/constants"
 	"istio.io/istio/pkg/config/host"
@@ -326,10 +327,34 @@ func ConvertToSidecarScope(ps *PushContext, sidecarConfig *config.Config, config
 	}
 
 	for _, listener := range out.EgressListeners {
-		// First add the explicitly requested services, which take priority
-		for _, s := range listener.services {
-			addService(s)
+
+		needsPortMatch := listener.IstioListener != nil && listener.IstioListener.Port.GetNumber() != 0 &&
+			protocol.Parse(listener.IstioListener.Port.Protocol) != protocol.HTTP_PROXY
+
+		if features.FilterSidecarClusterConfig && needsPortMatch {
+			vsHosts := make(map[string]struct{}, 0)
+			for _, vs := range listener.virtualServices {
+				v := vs.Spec.(*networking.VirtualService)
+				for _, h := range v.Hosts {
+					vsHosts[h] = struct{}{}
+				}
+			}
+
+			for _, s := range listener.services {
+				// A VirtualService is defined for this service, skip the serivce here, infer the
+				// outbound cluster from route destination.
+				if _, found := vsHosts[string(s.Hostname)]; found {
+					continue
+				}
+				addService(s)
+			}
+		} else {
+			// First add the explicitly requested services, which take priority
+			for _, s := range listener.services {
+				addService(s)
+			}
 		}
+
 		// add dependencies on delegate virtual services
 		delegates := ps.DelegateVirtualServicesConfigKey(listener.virtualServices)
 		for _, delegate := range delegates {

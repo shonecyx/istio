@@ -65,6 +65,9 @@ var (
 	// Currently this may cause a bug when we go from N clusters -> 0 clusters -> N clusters
 	FilterGatewayClusterConfig = env.RegisterBoolVar("PILOT_FILTER_GATEWAY_CLUSTER_CONFIG", false, "").Get()
 
+	// FilterSidecarClusterConfig controls if only required outbound clusters should be pushed to sidecars
+	FilterSidecarClusterConfig = env.RegisterBoolVar("PILOT_FILTER_SIDECAR_CLUSTER_CONFIG", false, "").Get()
+
 	DebounceAfter = env.RegisterDurationVar(
 		"PILOT_DEBOUNCE_AFTER",
 		100*time.Millisecond,
