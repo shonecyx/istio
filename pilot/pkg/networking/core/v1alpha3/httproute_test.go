@@ -1241,9 +1241,9 @@ func TestSidecarOutboundHTTPRouteConfigWithHTTPS(t *testing.T) {
 					Port: &networking.Port{
 						Number:   8443,
 						Protocol: "HTTPS",
-						Name:     "something",
+						Name:     "bookinfo",
 					},
-					Hosts: []string{"*/test-1.https.com"},
+					Hosts: []string{"*/bookinfo.com"},
 					Tls: &networking.ServerTLSSettings{
 						Mode:              networking.ServerTLSSettings_SIMPLE,
 						ServerCertificate: "server-cert.crt",
@@ -1254,7 +1254,7 @@ func TestSidecarOutboundHTTPRouteConfigWithHTTPS(t *testing.T) {
 					Port: &networking.Port{
 						Number:   8443,
 						Protocol: "HTTPS",
-						Name:     "something",
+						Name:     "test2",
 					},
 					Hosts: []string{"*/test-2.https.com"},
 					Tls: &networking.ServerTLSSettings{
@@ -1278,7 +1278,7 @@ func TestSidecarOutboundHTTPRouteConfigWithHTTPS(t *testing.T) {
 					Port: &networking.Port{
 						Number:   8443,
 						Protocol: "HTTPS",
-						Name:     "something",
+						Name:     "test2",
 					},
 					Hosts: []string{"*/test-2.https.com"},
 					Tls: &networking.ServerTLSSettings{
@@ -1305,7 +1305,7 @@ func TestSidecarOutboundHTTPRouteConfigWithHTTPS(t *testing.T) {
 					Port: &networking.Port{
 						Number:   8443,
 						Protocol: "HTTPS",
-						Name:     "something",
+						Name:     "test",
 					},
 					Hosts: []string{
 						"*/test-1.https.com",
@@ -1332,7 +1332,7 @@ func TestSidecarOutboundHTTPRouteConfigWithHTTPS(t *testing.T) {
 	}{
 		{
 			name:                  "HTTPS termination without VirtualService",
-			routeName:             "https:test-2.https.com:8443",
+			routeName:             "https:8443:test2",
 			sidecarConfig:         sidecarConfigWithHTTPSTermination,
 			virtualServiceConfigs: nil,
 			expectedHosts: map[string]map[string]bool{
@@ -1344,8 +1344,8 @@ func TestSidecarOutboundHTTPRouteConfigWithHTTPS(t *testing.T) {
 			registryOnly: true,
 		},
 		{
-			name:                  "HTTPS termination and allow any without VirtualService",
-			routeName:             "https:test-2.https.com:8443",
+			name:                  "HTTPS termination without VirtualService and allow any",
+			routeName:             "https:8443:test2",
 			sidecarConfig:         sidecarConfigWithHTTPSTerminationAllowAny,
 			virtualServiceConfigs: nil,
 			expectedHosts: map[string]map[string]bool{
@@ -1358,10 +1358,14 @@ func TestSidecarOutboundHTTPRouteConfigWithHTTPS(t *testing.T) {
 		},
 		{
 			name:                  "egress listener with multiple hosts",
-			routeName:             "https:test-2.https.com:8443",
+			routeName:             "https:8443:test",
 			sidecarConfig:         sidecarConfigWithHTTPSTerminationMultiHosts,
 			virtualServiceConfigs: nil,
 			expectedHosts: map[string]map[string]bool{
+				"test-1.https.com:8443": {
+					"test-1.https.com:8443": true, "test-1.https.com": true,
+					"*.test-1.https.com:8443": true, "*.test-1.https.com": true,
+				},
 				"test-2.https.com:8443": {
 					"test-2.https.com:8443": true, "test-2.https.com": true,
 					"*.test-2.https.com:8443": true, "*.test-2.https.com": true,
@@ -1403,13 +1407,12 @@ func testSidecarRDSVHosts(t *testing.T, services []*model.Service,
 
 	vHostCache := make(map[int][]*route.VirtualHost)
 	routeCfg := configgen.buildSidecarOutboundHTTPRouteConfig(proxy, env.PushContext, routeName, vHostCache)
-
-	t.Log(xdstest.DumpList(t, xdstest.InterfaceSlice([]*route.RouteConfiguration{routeCfg})))
-
-	xdstest.ValidateRouteConfiguration(t, routeCfg)
 	if routeCfg == nil {
 		t.Fatalf("got nil route for %s", routeName)
 	}
+
+	// t.Log(xdstest.DumpList(t, xdstest.InterfaceSlice([]*route.RouteConfiguration{routeCfg})))
+	xdstest.ValidateRouteConfiguration(t, routeCfg)
 
 	expectedNumberOfRoutes := len(expectedHosts)
 	numberOfRoutes := 0

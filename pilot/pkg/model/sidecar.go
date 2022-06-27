@@ -496,7 +496,7 @@ func (sc *SidecarScope) DestinationRule(hostname host.Name) *config.Config {
 
 // GetEgressListenerForRDS returns the egress listener corresponding to
 // the listener port or the bind address or the catch all listener
-func (sc *SidecarScope) GetEgressListenerForRDS(port int, bind string, host host.Name) []*IstioEgressListenerWrapper {
+func (sc *SidecarScope) GetEgressListenerForRDS(port int, bind string, portName string) []*IstioEgressListenerWrapper {
 	if sc == nil {
 		return nil
 	}
@@ -522,17 +522,16 @@ func (sc *SidecarScope) GetEgressListenerForRDS(port int, bind string, host host
 				continue
 			}
 
-			if host == "" {
-				// this is a non-zero port match
+			if portName == "" {
+				// this is a non-zero port match with empty port name for HTTP
 				out = append(out, e)
 				continue
 			}
 
-			for _, s := range e.services {
-				if s.Hostname.Matches(host) {
-					out = append(out, e)
-					break
-				}
+			if e.IstioListener.Port.Name == portName {
+				// port name is not empty for HTTPS
+				out = append(out, e)
+				break
 			}
 		}
 	}
@@ -727,4 +726,14 @@ func matchingService(importedHosts []host.Name, service *Service, ilw *IstioEgre
 		}
 	}
 	return nil
+}
+
+func CanSidecarEgressListenerTerminateTls(tls *networking.ServerTLSSettings) bool {
+	if tls != nil {
+		switch tls.Mode {
+		case networking.ServerTLSSettings_SIMPLE, networking.ServerTLSSettings_MUTUAL:
+			return true
+		}
+	}
+	return false
 }

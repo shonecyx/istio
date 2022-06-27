@@ -994,6 +994,8 @@ var ValidateSidecar = registerValidateFunc("ValidateSidecar",
 			}
 		}
 
+		// Ensure unique port names
+		portNames := make(map[string]bool)
 		portMap = make(map[uint32]struct{})
 		udsMap := make(map[string]struct{})
 		catchAllEgressListenerFound := false
@@ -1025,6 +1027,25 @@ var ValidateSidecar = registerValidateFunc("ValidateSidecar",
 					}
 					udsMap[bind] = struct{}{}
 				} else {
+					proto := protocol.Parse(i.Port.Protocol)
+					if proto.IsTLS() && i.Tls != nil {
+						switch i.Tls.Mode {
+						case networking.ServerTLSSettings_PASSTHROUGH:
+							// validate nothing
+						case networking.ServerTLSSettings_AUTO_PASSTHROUGH, networking.ServerTLSSettings_ISTIO_MUTUAL:
+							errs = appendErrors(errs, fmt.Errorf("sidecar: egress listeners does not support TLS mode %s", i.Tls.Mode))
+						case networking.ServerTLSSettings_SIMPLE, networking.ServerTLSSettings_MUTUAL:
+							errs = appendErrors(errs, validateTLSOptions(i.Tls))
+							if len(i.Port.Name) == 0 {
+								errs = appendErrors(errs, fmt.Errorf("sidecar: port name on egress listeners must not be empty for protocol %s with TLS termination", proto))
+							} else if portNames[i.Port.Name] {
+								errs = appendErrors(errs, fmt.Errorf("sidecar: port name on egress listeners must be unique for protocol %s with TLS termination", proto))
+							} else {
+								portNames[i.Port.Name] = true
+							}
+						}
+					}
+
 					if _, found := portMap[i.Port.Number]; found {
 						proto := protocol.Parse(i.Port.Protocol)
 						if !proto.IsTLS() && !proto.IsHTTP() {

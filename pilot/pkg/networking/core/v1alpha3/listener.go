@@ -569,10 +569,19 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundListeners(node *model.
 				tls:        egressListener.IstioListener.Tls,
 			}
 
-			for _, service := range services {
-				listenerOpts.service = service
-				// Set service specific attributes here.
-				configgen.buildSidecarOutboundListenerForPortOrUDS(listenerOpts, listenerMap, virtualServices, actualWildcard)
+			if listenPort.Protocol.IsTLS() && model.CanSidecarEgressListenerTerminateTls(listenerOpts.tls) {
+				// When HTTPS is terminated on outbound listener, the TLS cert/key is shared by `hosts` defined in
+				// IstioEgressListener, that's, they can use same FilterChain which matches all of them.
+				if len(services) > 0 {
+					listenerOpts.services = services
+					configgen.buildSidecarOutboundListenerForPortOrUDS(listenerOpts, listenerMap, virtualServices, actualWildcard)
+				}
+			} else {
+				for _, service := range services {
+					listenerOpts.services = []*model.Service{service}
+					// Set service specific attributes here.
+					configgen.buildSidecarOutboundListenerForPortOrUDS(listenerOpts, listenerMap, virtualServices, actualWildcard)
+				}
 			}
 		} else {
 			// This is a catch all egress listener with no port. This
@@ -621,7 +630,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundListeners(node *model.
 					listenerOpts.bind = bind
 					// port depends on servicePort.
 					listenerOpts.port = servicePort
-					listenerOpts.service = service
+					listenerOpts.services = []*model.Service{service}
 
 					// Support statefulsets/headless services with TCP ports, and empty service address field.
 					// Instead of generating a single 0.0.0.0:Port listener, generate a listener
@@ -777,7 +786,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundHTTPListenerOptsForPor
 		}
 
 		if !sniffingEnabled {
-			if listenerOpts.service != nil {
+			if len(listenerOpts.services) > 0 {
 				if !(*currentListenerEntry).servicePort.Protocol.IsHTTP() {
 					outboundListenerConflict{
 						metric:          model.ProxyStatusConflictOutboundListenerTCPOverHTTP,
@@ -785,19 +794,19 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundHTTPListenerOptsForPor
 						listenerName:    *listenerMapKey,
 						currentServices: (*currentListenerEntry).services,
 						currentProtocol: (*currentListenerEntry).servicePort.Protocol,
-						newHostname:     listenerOpts.service.Hostname,
+						newHostname:     listenerOpts.services[0].Hostname,
 						newProtocol:     listenerOpts.port.Protocol,
 					}.addMetric(listenerOpts.push)
 				}
 
 				// Skip building listener for the same http port
-				(*currentListenerEntry).services = append((*currentListenerEntry).services, listenerOpts.service)
+				(*currentListenerEntry).services = append((*currentListenerEntry).services, listenerOpts.services...)
 			}
 			return false, nil
 		}
 	}
 
-	terminateTls := canTerminateTls(listenerOpts.tls)
+	terminateTls := model.CanSidecarEgressListenerTerminateTls(listenerOpts.tls)
 	listenerProtocol := istionetworking.ModelProtocolToListenerProtocol(listenerOpts.port.Protocol, core.TrafficDirection_OUTBOUND, terminateTls)
 
 	// No conflicts. Add a http filter chain option to the listenerOpts
@@ -807,17 +816,18 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundHTTPListenerOptsForPor
 	// - for auto-detected protocol which bind to non-ANY and has a specific hostname,
 	//   the route name will be <hostName>:<portNumber>
 	// - HTTP servers have route name set to <portNumber>
-	// - HTTPS servers with TLS termination have route name set to https:<hostName>:<portNumber>
+	// - HTTPS servers with TLS termination have route name set to https:<portNumber>:<portName>
 	var rdsName string
 	if listenerOpts.port.Port == 0 {
 		rdsName = listenerOpts.bind // use the UDS as a rds name
 	} else {
 		if listenerProtocol == istionetworking.ListenerProtocolAuto &&
-			sniffingEnabled && listenerOpts.bind != actualWildcard && listenerOpts.service != nil {
-			rdsName = string(listenerOpts.service.Hostname) + ":" + strconv.Itoa(listenerOpts.port.Port)
+			sniffingEnabled && listenerOpts.bind != actualWildcard && len(listenerOpts.services) > 0 {
+			rdsName = string(listenerOpts.services[0].Hostname) + ":" + strconv.Itoa(listenerOpts.port.Port)
 		} else {
-			if listenerOpts.port.Protocol.IsTLS() && listenerOpts.tls != nil && !IsPassThroughServer(listenerOpts.tls) {
-				rdsName = "https" + ":" + string(listenerOpts.service.Hostname) + ":" + strconv.Itoa(listenerOpts.port.Port)
+			if listenerOpts.port.Protocol == protocol.HTTPS && terminateTls {
+				// port name is unique in Sidecar resource, this is guaranteed by validation webhook.
+				rdsName = "https" + ":" + strconv.Itoa(listenerOpts.port.Port) + ":" + string(listenerOpts.port.Name)
 			} else {
 				rdsName = strconv.Itoa(listenerOpts.port.Port)
 			}
@@ -843,7 +853,10 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundHTTPListenerOptsForPor
 	}
 
 	if listenerProtocol == istionetworking.ListenerProtocolHTTP && terminateTls {
-		fcOpts.sniHosts = []string{string(listenerOpts.service.Hostname)}
+		// services shares same TLS server cert/key
+		for _, s := range listenerOpts.services {
+			fcOpts.sniHosts = append(fcOpts.sniHosts, string(s.Hostname))
+		}
 		fcOpts.tlsContext = buildSidecarOutboundListenerTLSContext(listenerOpts.tls, listenerOpts.proxy)
 		fcOpts.match = &listener.FilterChainMatch{
 			TransportProtocol: xdsfilters.TLSTransportProtocol,
@@ -868,7 +881,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundTCPListenerOptsForPort
 	// ip:port. This will reduce the impact of a listener reload
 
 	if len(listenerOpts.bind) == 0 {
-		svcListenAddress := listenerOpts.service.GetServiceAddressForProxy(listenerOpts.proxy)
+		svcListenAddress := listenerOpts.services[0].GetServiceAddressForProxy(listenerOpts.proxy)
 		// We should never get an empty address.
 		// This is a safety guard, in case some platform adapter isn't doing things
 		// properly
@@ -924,8 +937,8 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundTCPListenerOptsForPort
 				// the wildcard egress listener. the check for the "locked" bit will eliminate the collision.
 				// User is also not allowed to add duplicate ports in the egress listener
 				var newHostname host.Name
-				if listenerOpts.service != nil {
-					newHostname = listenerOpts.service.Hostname
+				if len(listenerOpts.services) > 0 {
+					newHostname = listenerOpts.services[0].Hostname
 				} else {
 					// user defined outbound listener via sidecar API
 					newHostname = "sidecar-config-egress-http-listener"
@@ -952,9 +965,13 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundTCPListenerOptsForPort
 	}
 
 	meshGateway := map[string]bool{constants.IstioMeshGateway: true}
+	var service *model.Service
+	if len(listenerOpts.services) > 0 {
+		service = listenerOpts.services[0]
+	}
 	return true, buildSidecarOutboundTCPTLSFilterChainOpts(listenerOpts.proxy,
 		listenerOpts.push, virtualServices,
-		*destinationCIDR, listenerOpts.service,
+		*destinationCIDR, service,
 		listenerOpts.bind, listenerOpts.port, meshGateway)
 }
 
@@ -975,7 +992,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundListenerForPortOrUDS(l
 
 	conflictType := NoConflict
 
-	terminateTls := canTerminateTls(listenerOpts.tls)
+	terminateTls := model.CanSidecarEgressListenerTerminateTls(listenerOpts.tls)
 	outboundSniffingEnabled := features.EnableProtocolSniffingForOutbound
 	listenerPortProtocol := listenerOpts.port.Protocol
 	listenerProtocol := istionetworking.ModelProtocolToListenerProtocol(listenerOpts.port.Protocol, core.TrafficDirection_OUTBOUND, terminateTls)
@@ -1002,7 +1019,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundListenerForPortOrUDS(l
 				if currentListenerEntry.protocol.IsHTTP() {
 					// conflictType is HTTPOverHTTP
 					// In these cases, we just add the services and exit early rather than recreate an identical listener
-					currentListenerEntry.services = append(currentListenerEntry.services, listenerOpts.service)
+					currentListenerEntry.services = append(currentListenerEntry.services, listenerOpts.services...)
 					return
 				} else if currentListenerEntry.protocol == protocol.HTTPS && terminateTls {
 					// merge filter chains to current HTTPS listener
@@ -1012,7 +1029,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundListenerForPortOrUDS(l
 				} else {
 					// conflictType is HTTPOverAuto
 					// In these cases, we just add the services and exit early rather than recreate an identical listener
-					currentListenerEntry.services = append(currentListenerEntry.services, listenerOpts.service)
+					currentListenerEntry.services = append(currentListenerEntry.services, listenerOpts.services...)
 					return
 				}
 			}
@@ -1099,7 +1116,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundListenerForPortOrUDS(l
 				} else {
 					// conflictType is AutoOverAuto
 					// In these cases, we just add the services and exit early rather than recreate an identical listener
-					currentListenerEntry.services = append(currentListenerEntry.services, listenerOpts.service)
+					currentListenerEntry.services = append(currentListenerEntry.services, listenerOpts.services...)
 					return
 				}
 			}
@@ -1177,7 +1194,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundListenerForPortOrUDS(l
 				listenerOpts, listenerMapKey, listenerMap)
 		} else {
 			listenerMap[listenerMapKey] = &outboundListenerEntry{
-				services:    []*model.Service{listenerOpts.service},
+				services:    listenerOpts.services,
 				servicePort: listenerOpts.port,
 				bind:        listenerOpts.bind,
 				listener:    mutable.Listener,
@@ -1189,7 +1206,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundListenerForPortOrUDS(l
 		currentListenerEntry.listener.FilterChains = mergeFilterChains(mutable.Listener.FilterChains, currentListenerEntry.listener.FilterChains)
 		currentListenerEntry.protocol = protocol.Unsupported
 		currentListenerEntry.listener.ListenerFilters = appendListenerFilters(currentListenerEntry.listener.ListenerFilters)
-		currentListenerEntry.services = append(currentListenerEntry.services, listenerOpts.service)
+		currentListenerEntry.services = append(currentListenerEntry.services, listenerOpts.services...)
 
 	case TCPOverHTTP:
 		// Merge TCP filter chain to HTTP filter chain
@@ -1207,7 +1224,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundListenerForPortOrUDS(l
 
 	case AutoOverHTTP:
 		listenerMap[listenerMapKey] = &outboundListenerEntry{
-			services:    append(currentListenerEntry.services, listenerOpts.service),
+			services:    append(currentListenerEntry.services, listenerOpts.services...),
 			servicePort: listenerOpts.port,
 			bind:        listenerOpts.bind,
 			listener:    mutable.Listener,
@@ -1291,19 +1308,9 @@ type buildListenerOpts struct {
 	skipUserFilters   bool
 	needHTTPInspector bool
 	class             ListenerClass
-	service           *model.Service
+	services          []*model.Service
 	protocol          istionetworking.ListenerProtocol
 	tls               *networking.ServerTLSSettings
-}
-
-func canTerminateTls(tls *networking.ServerTLSSettings) bool {
-	if tls != nil {
-		switch tls.Mode {
-		case networking.ServerTLSSettings_SIMPLE, networking.ServerTLSSettings_MUTUAL:
-			return true
-		}
-	}
-	return false
 }
 
 func buildHTTPConnectionManager(listenerOpts buildListenerOpts, httpOpts *httpListenerOpts,
@@ -1671,8 +1678,8 @@ func mergeTCPFilterChains(incoming []*listener.FilterChain, listenerOpts buildLi
 				// the wildcard egress listener. the check for the "locked" bit will eliminate the collision.
 				// User is also not allowed to add duplicate ports in the egress listener
 				var newHostname host.Name
-				if listenerOpts.service != nil {
-					newHostname = listenerOpts.service.Hostname
+				if len(listenerOpts.services) > 0 {
+					newHostname = listenerOpts.services[0].Hostname
 				} else {
 					// user defined outbound listener via sidecar API
 					newHostname = "sidecar-config-egress-tcp-listener"
@@ -1695,9 +1702,9 @@ func mergeTCPFilterChains(incoming []*listener.FilterChain, listenerOpts buildLi
 			// There is no conflict with any filter chain in the existing listener.
 			// So append the new filter chains to the existing listener's filter chains
 			mergedFilterChains = append(mergedFilterChains, incomingFilterChain)
-			if listenerOpts.service != nil {
+			if len(listenerOpts.services) > 0 {
 				lEntry := listenerMap[listenerMapKey]
-				lEntry.services = append(lEntry.services, listenerOpts.service)
+				lEntry.services = append(lEntry.services, listenerOpts.services...)
 			}
 		}
 	}

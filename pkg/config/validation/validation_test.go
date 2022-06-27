@@ -5351,7 +5351,7 @@ func TestValidateSidecar(t *testing.T) {
 					},
 				},
 			},
-		}, false},
+		}, true},
 		{"egress HTTPS with duplicate ports", &networking.Sidecar{
 			Egress: []*networking.IstioEgressListener{
 				{
@@ -5376,6 +5376,185 @@ func TestValidateSidecar(t *testing.T) {
 				},
 			},
 		}, true},
+		{"egress with TLS mode PASSTHROUGH", &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						Protocol: "https",
+						Number:   443,
+						Name:     "foo",
+					},
+					Hosts: []string{
+						"ns1/foo.com",
+					},
+					Tls: &networking.ServerTLSSettings{
+						Mode: networking.ServerTLSSettings_PASSTHROUGH,
+					},
+				},
+				{
+					Port: &networking.Port{
+						Protocol: "tls",
+						Number:   7443,
+						Name:     "bar",
+					},
+					Hosts: []string{
+						"ns2/bar.com",
+					},
+					Tls: &networking.ServerTLSSettings{
+						Mode: networking.ServerTLSSettings_PASSTHROUGH,
+					},
+				},
+			},
+		}, true},
+		{"egress with protocol TLS and TLS mode AUTO_PASSTHROUGH", &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						Protocol: "tls",
+						Number:   7443,
+						Name:     "bar",
+					},
+					Hosts: []string{
+						"ns2/bar.com",
+					},
+					Tls: &networking.ServerTLSSettings{
+						Mode: networking.ServerTLSSettings_AUTO_PASSTHROUGH,
+					},
+				},
+			},
+		}, false},
+		{"egress with protocol HTTPS and TLS mode AUTO_PASSTHROUGH", &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						Protocol: "https",
+						Number:   443,
+						Name:     "foo",
+					},
+					Hosts: []string{
+						"ns1/foo.com",
+					},
+					Tls: &networking.ServerTLSSettings{
+						Mode: networking.ServerTLSSettings_AUTO_PASSTHROUGH,
+					},
+				},
+			},
+		}, false},
+		{"egress with protocol TLS and TLS mode ISTIO_MUTUAL", &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						Protocol: "tls",
+						Number:   7443,
+						Name:     "bar",
+					},
+					Hosts: []string{
+						"ns2/bar.com",
+					},
+					Tls: &networking.ServerTLSSettings{
+						Mode: networking.ServerTLSSettings_ISTIO_MUTUAL,
+					},
+				},
+			},
+		}, false},
+		{"egress with protocol HTTPS and TLS mode ISTIO_MUTUAL", &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						Protocol: "https",
+						Number:   443,
+						Name:     "foo",
+					},
+					Hosts: []string{
+						"ns1/foo.com",
+					},
+					Tls: &networking.ServerTLSSettings{
+						Mode: networking.ServerTLSSettings_ISTIO_MUTUAL,
+					},
+				},
+			},
+		}, false},
+		{"egress with TLS mode SIMPLE and MUTUAL", &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						Protocol: "https",
+						Number:   443,
+						Name:     "foo",
+					},
+					Hosts: []string{
+						"ns1/foo.com",
+					},
+					Tls: &networking.ServerTLSSettings{
+						Mode:           networking.ServerTLSSettings_MUTUAL,
+						CredentialName: "sds-name",
+					},
+				},
+				{
+					Port: &networking.Port{
+						Protocol: "tls",
+						Number:   7443,
+						Name:     "bar",
+					},
+					Hosts: []string{
+						"ns2/bar.com",
+					},
+					Tls: &networking.ServerTLSSettings{
+						Mode:           networking.ServerTLSSettings_SIMPLE,
+						CredentialName: "sds-name",
+					},
+				},
+			},
+		}, true},
+		{"egress with TLS termination and empty port name", &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						Protocol: "https",
+						Number:   443,
+					},
+					Hosts: []string{
+						"ns1/foo.com",
+					},
+					Tls: &networking.ServerTLSSettings{
+						Mode:           networking.ServerTLSSettings_SIMPLE,
+						CredentialName: "sds-name",
+					},
+				},
+			},
+		}, false},
+		{"egress with TLS termination and duplicated port names", &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						Protocol: "https",
+						Number:   443,
+						Name:     "foo",
+					},
+					Hosts: []string{
+						"ns1/foo.com",
+					},
+					Tls: &networking.ServerTLSSettings{
+						Mode:           networking.ServerTLSSettings_SIMPLE,
+						CredentialName: "sds-name",
+					},
+				},
+				{
+					Port: &networking.Port{
+						Protocol: "https",
+						Number:   8443,
+						Name:     "foo",
+					},
+					Hosts: []string{
+						"ns1/foo.com",
+					},
+					Tls: &networking.ServerTLSSettings{
+						Mode:           networking.ServerTLSSettings_SIMPLE,
+						CredentialName: "sds-name",
+					},
+				},
+			},
+		}, false},
 		{"ingress without port", &networking.Sidecar{
 			Ingress: []*networking.IstioIngressListener{
 				{

@@ -24,22 +24,9 @@ import (
 	"istio.io/istio/pkg/proto"
 )
 
-// IsPassThroughServer returns true if this server does TLS passthrough (auto or manual)
-func IsPassThroughServer(tls *networking.ServerTLSSettings) bool {
-	if tls == nil {
-		return false
-	}
-
-	if tls.Mode == networking.ServerTLSSettings_PASSTHROUGH {
-		return true
-	}
-
-	return false
-}
-
 func buildSidecarOutboundListenerTLSContext(tls *networking.ServerTLSSettings, proxy *model.Proxy) *tlsv3.DownstreamTlsContext {
 
-	if tls == nil || IsPassThroughServer(tls) {
+	if tls == nil || !model.CanSidecarEgressListenerTerminateTls(tls) {
 		return nil
 	}
 

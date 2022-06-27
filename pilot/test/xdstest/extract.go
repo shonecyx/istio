@@ -137,6 +137,27 @@ func ExtractListener(name string, ll []*listener.Listener) *listener.Listener {
 	return nil
 }
 
+func ExtractFilterChain(serverNames []string, l *listener.Listener) *listener.FilterChain {
+	if len(serverNames) == 0 {
+		return nil
+	}
+	sort.Stable(sort.StringSlice(serverNames))
+
+	for _, fc := range l.FilterChains {
+		if fc.FilterChainMatch == nil || len(fc.FilterChainMatch.ServerNames) == 0 {
+			continue
+		}
+
+		sniHosts := append([]string{}, fc.FilterChainMatch.ServerNames...)
+		sort.Stable(sort.StringSlice(sniHosts))
+		if reflect.DeepEqual(serverNames, sniHosts) {
+			return fc
+		}
+	}
+
+	return nil
+}
+
 func ExtractRouteConfigurations(rc []*route.RouteConfiguration) map[string]*route.RouteConfiguration {
 	res := map[string]*route.RouteConfiguration{}
 	for _, l := range rc {

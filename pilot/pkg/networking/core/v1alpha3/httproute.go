@@ -121,7 +121,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundHTTPRouteConfig(node *
 	routeName string, vHostCache map[int][]*route.VirtualHost) *route.RouteConfiguration {
 	var virtualHosts []*route.VirtualHost
 	listenerPort := 0
-	host := ""
+	portName := ""
 	useSniffing := false
 	needCatchAll := true
 	var err error
@@ -132,15 +132,14 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundHTTPRouteConfig(node *
 		!strings.HasPrefix(routeName, model.UnixAddressPrefix) {
 
 		if parts[0] == "https" {
-			if len(parts) >= 2 {
-				host = parts[1]
-				listenerPort, err = strconv.Atoi(parts[2])
-
+			if len(parts) >= 3 {
+				listenerPort, err = strconv.Atoi(parts[1])
+				portName = parts[2]
 				// For HTTPS with TLS termination, HTTP route config should be generated explicitly
 				// for the host, catch all virtual host is not required; also, sniffing is not needed.
 				needCatchAll = false
 			} else {
-				log.Debugf("bad route name: %s", routeName)
+				log.Warnf("bad route name: %s", routeName)
 				return nil
 			}
 		} else {
@@ -178,7 +177,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundHTTPRouteConfig(node *
 		}
 	}
 	if !cacheHit {
-		virtualHosts = configgen.buildSidecarOutboundVirtualHosts(node, push, routeName, listenerPort, host)
+		virtualHosts = configgen.buildSidecarOutboundVirtualHosts(node, push, routeName, listenerPort, portName)
 		if listenerPort > 0 {
 			// only cache for tcp ports and not for uds
 			vHostCache[listenerPort] = virtualHosts
@@ -208,7 +207,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundHTTPRouteConfig(node *
 }
 
 func (configgen *ConfigGeneratorImpl) buildSidecarOutboundVirtualHosts(node *model.Proxy, push *model.PushContext,
-	routeName string, listenerPort int, hostname string) []*route.VirtualHost {
+	routeName string, listenerPort int, portName string) []*route.VirtualHost {
 	var virtualServices []config.Config
 	var services []*model.Service
 
@@ -217,7 +216,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundVirtualHosts(node *mod
 	// egress listener only. A route with sniffing would not have been generated if there
 	// was a sidecar with explicit port (and hence protocol declaration). A route with
 	// sniffing is generated only in the case of the catch all egress listener.
-	egressListeners := node.SidecarScope.GetEgressListenerForRDS(listenerPort, routeName, host.Name(hostname))
+	egressListeners := node.SidecarScope.GetEgressListenerForRDS(listenerPort, routeName, portName)
 	// We should never be getting a nil egress listener because the code that setup this RDS
 	// call obviously saw an egress listener
 	if len(egressListeners) == 0 {
@@ -242,10 +241,6 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundVirtualHosts(node *mod
 
 	nameToServiceMap := make(map[host.Name]*model.Service)
 	for _, svc := range services {
-		// HTTPS only need virtual host for the `hostname` in route name
-		if len(hostname) > 0 && svc.Hostname != host.Name(hostname) {
-			continue
-		}
 		if listenerPort == 0 {
 			// Take all ports when listen port is 0 (http_proxy or uds)
 			// Expect virtualServices to resolve to right port

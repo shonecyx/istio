@@ -29,9 +29,61 @@ func TestBuildSidecarOutboundListenersWithHTTPSTermination(t *testing.T) {
 		ConfigNamespace: "not-default",
 	}
 
+	servicesWithSameHosts := []config.Config{
+		{
+			Meta: config.Meta{Name: "export-to-root", Namespace: "ns-config", GroupVersionKind: gvk.ServiceEntry},
+			Spec: &networking.ServiceEntry{
+				ExportTo: []string{"istio-system"},
+				Hosts:    []string{"test.com", "foo.test.com", "bar.test.com"},
+				Ports: []*networking.Port{
+					{Name: "https", Number: 443, Protocol: "HTTPS"},
+				},
+				Resolution: networking.ServiceEntry_DNS,
+			},
+		},
+		{
+			Meta: config.Meta{Name: "export-to-non-default", Namespace: "ns-config", GroupVersionKind: gvk.ServiceEntry},
+			Spec: &networking.ServiceEntry{
+				ExportTo: []string{sidecarProxy.ConfigNamespace},
+				Hosts:    []string{"test.com", "foo.test.com", "bar.test.com"},
+				Ports: []*networking.Port{
+					{Name: "http", Number: 80, Protocol: "HTTP"},
+					{Name: "https", Number: 443, Protocol: "HTTPS"},
+				},
+				Resolution: networking.ServiceEntry_DNS,
+			},
+		},
+	}
+
+	services := []config.Config{
+		{
+			Meta: config.Meta{Name: "foo", Namespace: "ns-config", GroupVersionKind: gvk.ServiceEntry},
+			Spec: &networking.ServiceEntry{
+				Hosts: []string{"foo.com"},
+				Ports: []*networking.Port{
+					{Name: "http", Number: 80, Protocol: "HTTP"},
+					{Name: "https", Number: 443, Protocol: "HTTPS"},
+				},
+				Resolution: networking.ServiceEntry_DNS,
+			},
+		},
+		{
+			Meta: config.Meta{Name: "bar", Namespace: "ns-config", GroupVersionKind: gvk.ServiceEntry},
+			Spec: &networking.ServiceEntry{
+				Hosts: []string{"bar.com"},
+				Ports: []*networking.Port{
+					{Name: "http", Number: 80, Protocol: "HTTP"},
+					{Name: "https", Number: 443, Protocol: "HTTPS"},
+				},
+				Resolution: networking.ServiceEntry_DNS,
+			},
+		},
+	}
+
 	type expectedFilterChain struct {
-		FilterChainMatch *listener.FilterChainMatch
-		IsTLS            bool
+		filterChainMatch *listener.FilterChainMatch
+		isTLS            bool
+		routeName        string
 	}
 
 	cases := []struct {
@@ -42,31 +94,7 @@ func TestBuildSidecarOutboundListenersWithHTTPSTermination(t *testing.T) {
 	}{
 		{
 			"ServiceEntries with same hostnames but different exportTo",
-			[]config.Config{
-				{
-					Meta: config.Meta{Name: "export-to-root", Namespace: "ns-config", GroupVersionKind: gvk.ServiceEntry},
-					Spec: &networking.ServiceEntry{
-						ExportTo: []string{"istio-system"},
-						Hosts:    []string{"test.com", "foo.test.com", "bar.test.com"},
-						Ports: []*networking.Port{
-							{Name: "https", Number: 443, Protocol: "HTTPS"},
-						},
-						Resolution: networking.ServiceEntry_DNS,
-					},
-				},
-				{
-					Meta: config.Meta{Name: "export-to-non-default", Namespace: "ns-config", GroupVersionKind: gvk.ServiceEntry},
-					Spec: &networking.ServiceEntry{
-						ExportTo: []string{sidecarProxy.ConfigNamespace},
-						Hosts:    []string{"test.com", "foo.test.com", "bar.test.com"},
-						Ports: []*networking.Port{
-							{Name: "http", Number: 80, Protocol: "HTTP"},
-							{Name: "https", Number: 443, Protocol: "HTTPS"},
-						},
-						Resolution: networking.ServiceEntry_DNS,
-					},
-				},
-			},
+			servicesWithSameHosts,
 			config.Config{
 				Meta: config.Meta{
 					Name:             "sc",
@@ -83,8 +111,9 @@ func TestBuildSidecarOutboundListenersWithHTTPSTermination(t *testing.T) {
 							Hosts: []string{"ns-config/test.com", "ns-config/foo.test.com", "ns-config/bar.test.com"},
 							Port:  &networking.Port{Name: "https", Number: 443, Protocol: "HTTPS"},
 							Tls: &networking.ServerTLSSettings{
-								CredentialName: "auto://test.com~foo.test.com~bar.test.com",
-								Mode:           networking.ServerTLSSettings_SIMPLE,
+								Mode:              networking.ServerTLSSettings_SIMPLE,
+								ServerCertificate: "server-cert.crt",
+								PrivateKey:        "private-key.key",
 							},
 						},
 					},
@@ -93,30 +122,71 @@ func TestBuildSidecarOutboundListenersWithHTTPSTermination(t *testing.T) {
 			map[string][]expectedFilterChain{
 				"0.0.0.0_443": {
 					{
-						FilterChainMatch: &listener.FilterChainMatch{
-							ServerNames:       []string{"test.com"},
+						filterChainMatch: &listener.FilterChainMatch{
+							ServerNames:       []string{"bar.test.com", "foo.test.com", "test.com"},
 							TransportProtocol: xdsfilters.TLSTransportProtocol,
 						},
-						IsTLS: true,
-					},
-					{
-						FilterChainMatch: &listener.FilterChainMatch{
-							ServerNames:       []string{"foo.test.com"},
-							TransportProtocol: xdsfilters.TLSTransportProtocol,
-						},
-						IsTLS: true,
-					},
-					{
-						FilterChainMatch: &listener.FilterChainMatch{
-							ServerNames:       []string{"bar.test.com"},
-							TransportProtocol: xdsfilters.TLSTransportProtocol,
-						},
-						IsTLS: true,
+						isTLS:     true,
+						routeName: "https:443:https",
 					},
 				},
 				"0.0.0.0_80": {
 					{
-						IsTLS: false,
+						isTLS:     false,
+						routeName: "80",
+					},
+				},
+			},
+		},
+		{
+			"multiple egress listeners on port 443",
+			services,
+			config.Config{
+				Meta: config.Meta{
+					Name:             "sc",
+					Namespace:        sidecarProxy.ConfigNamespace,
+					GroupVersionKind: gvk.Sidecar,
+				},
+				Spec: &networking.Sidecar{
+					Egress: []*networking.IstioEgressListener{
+						{
+							Hosts: []string{"*/foo.com"},
+							Port:  &networking.Port{Name: "https-foo", Number: 443, Protocol: "HTTPS"},
+							Tls: &networking.ServerTLSSettings{
+								Mode:              networking.ServerTLSSettings_SIMPLE,
+								ServerCertificate: "server-cert.crt",
+								PrivateKey:        "private-key.key",
+							},
+						},
+						{
+							Hosts: []string{"*/bar.com"},
+							Port:  &networking.Port{Name: "https-bar", Number: 443, Protocol: "HTTPS"},
+							Tls: &networking.ServerTLSSettings{
+								Mode:              networking.ServerTLSSettings_SIMPLE,
+								ServerCertificate: "server-cert.crt",
+								PrivateKey:        "private-key.key",
+							},
+						},
+					},
+				},
+			},
+			map[string][]expectedFilterChain{
+				"0.0.0.0_443": {
+					{
+						filterChainMatch: &listener.FilterChainMatch{
+							ServerNames:       []string{"foo.com"},
+							TransportProtocol: xdsfilters.TLSTransportProtocol,
+						},
+						isTLS:     true,
+						routeName: "https:443:https-foo",
+					},
+					{
+						filterChainMatch: &listener.FilterChainMatch{
+							ServerNames:       []string{"bar.com"},
+							TransportProtocol: xdsfilters.TLSTransportProtocol,
+						},
+						isTLS:     true,
+						routeName: "https:443:https-bar",
 					},
 				},
 			},
@@ -127,7 +197,7 @@ func TestBuildSidecarOutboundListenersWithHTTPSTermination(t *testing.T) {
 				{
 					Meta: config.Meta{Name: "foo", Namespace: "ns-config", GroupVersionKind: gvk.ServiceEntry},
 					Spec: &networking.ServiceEntry{
-						Hosts: []string{"foo.com", "a.foo.com", "b.foo.com"},
+						Hosts: []string{"a.foo.com", "b.foo.com"},
 						Ports: []*networking.Port{
 							{Name: "https", Number: 443, Protocol: "HTTPS"},
 						},
@@ -137,7 +207,7 @@ func TestBuildSidecarOutboundListenersWithHTTPSTermination(t *testing.T) {
 				{
 					Meta: config.Meta{Name: "bar", Namespace: "ns-config", GroupVersionKind: gvk.ServiceEntry},
 					Spec: &networking.ServiceEntry{
-						Hosts: []string{"bar.com", "x.bar.com", "y.bar.com"},
+						Hosts: []string{"x.bar.com", "y.bar.com"},
 						Ports: []*networking.Port{
 							{Name: "https", Number: 443, Protocol: "HTTPS"},
 						},
@@ -154,18 +224,18 @@ func TestBuildSidecarOutboundListenersWithHTTPSTermination(t *testing.T) {
 				Spec: &networking.Sidecar{
 					Egress: []*networking.IstioEgressListener{
 						{
-							Hosts: []string{"ns-config/foo.com", "ns-config/a.foo.com", "ns-config/b.foo.com"},
-							Port:  &networking.Port{Name: "https", Number: 443, Protocol: "HTTPS"},
+							Hosts: []string{"ns-config/a.foo.com", "ns-config/b.foo.com"},
+							Port:  &networking.Port{Name: "https-foo", Number: 443, Protocol: "HTTPS"},
 							Tls: &networking.ServerTLSSettings{
-								CredentialName: "auto://foo.com~a.foo.com~b.foo.com",
+								CredentialName: "auto://a.foo.com~b.foo.com",
 								Mode:           networking.ServerTLSSettings_SIMPLE,
 							},
 						},
 						{
-							Hosts: []string{"ns-config/bar.com", "ns-config/x.bar.com", "ns-config/y.bar.com"},
-							Port:  &networking.Port{Name: "https", Number: 443, Protocol: "HTTPS"},
+							Hosts: []string{"ns-config/x.bar.com", "ns-config/y.bar.com"},
+							Port:  &networking.Port{Name: "https-bar", Number: 443, Protocol: "HTTPS"},
 							Tls: &networking.ServerTLSSettings{
-								CredentialName: "auto://bar.com~x.bar.com~y.bar.com",
+								CredentialName: "auto://x.bar.com~y.bar.com",
 								Mode:           networking.ServerTLSSettings_SIMPLE,
 							},
 						},
@@ -175,46 +245,20 @@ func TestBuildSidecarOutboundListenersWithHTTPSTermination(t *testing.T) {
 			map[string][]expectedFilterChain{
 				"0.0.0.0_443": {
 					{
-						FilterChainMatch: &listener.FilterChainMatch{
-							ServerNames:       []string{"foo.com"},
+						filterChainMatch: &listener.FilterChainMatch{
+							ServerNames:       []string{"a.foo.com", "b.foo.com"},
 							TransportProtocol: xdsfilters.TLSTransportProtocol,
 						},
-						IsTLS: true,
+						isTLS:     true,
+						routeName: "https:443:https-foo",
 					},
 					{
-						FilterChainMatch: &listener.FilterChainMatch{
-							ServerNames:       []string{"a.foo.com"},
+						filterChainMatch: &listener.FilterChainMatch{
+							ServerNames:       []string{"x.bar.com", "y.bar.com"},
 							TransportProtocol: xdsfilters.TLSTransportProtocol,
 						},
-						IsTLS: true,
-					},
-					{
-						FilterChainMatch: &listener.FilterChainMatch{
-							ServerNames:       []string{"b.foo.com"},
-							TransportProtocol: xdsfilters.TLSTransportProtocol,
-						},
-						IsTLS: true,
-					},
-					{
-						FilterChainMatch: &listener.FilterChainMatch{
-							ServerNames:       []string{"bar.com"},
-							TransportProtocol: xdsfilters.TLSTransportProtocol,
-						},
-						IsTLS: true,
-					},
-					{
-						FilterChainMatch: &listener.FilterChainMatch{
-							ServerNames:       []string{"x.bar.com"},
-							TransportProtocol: xdsfilters.TLSTransportProtocol,
-						},
-						IsTLS: true,
-					},
-					{
-						FilterChainMatch: &listener.FilterChainMatch{
-							ServerNames:       []string{"y.bar.com"},
-							TransportProtocol: xdsfilters.TLSTransportProtocol,
-						},
-						IsTLS: true,
+						isTLS:     true,
+						routeName: "https:443:https-bar",
 					},
 				},
 			},
@@ -232,6 +276,8 @@ func TestBuildSidecarOutboundListenersWithHTTPSTermination(t *testing.T) {
 
 		listeners := cg.ConfigGen.buildSidecarOutboundListeners(proxy, cg.env.PushContext)
 		actualListeners := xdstest.ExtractListenerNames(listeners)
+
+		t.Log(xdstest.DumpList(t, xdstest.InterfaceSlice(listeners)))
 
 		expectedListeners := make([]string, 0, len(tt.expectedListeners))
 		for k := range tt.expectedListeners {
@@ -253,14 +299,14 @@ func TestBuildSidecarOutboundListenersWithHTTPSTermination(t *testing.T) {
 			for _, efc := range v {
 				var fc *listener.FilterChain
 
-				if efc.IsTLS {
+				if efc.isTLS {
 					for _, afc := range l.FilterChains {
-						if filterChainMatchEqual(efc.FilterChainMatch, afc.FilterChainMatch) {
+						if filterChainMatchEqual(efc.filterChainMatch, afc.FilterChainMatch) {
 							fc = afc
 						}
 					}
 					if fc == nil {
-						t.Fatalf("Missing filter chain: %v", efc.FilterChainMatch)
+						t.Fatalf("Missing filter chain: %v", efc.filterChainMatch)
 					}
 				} else {
 					fc = l.FilterChains[0]
@@ -270,7 +316,12 @@ func TestBuildSidecarOutboundListenersWithHTTPSTermination(t *testing.T) {
 					t.Fatalf("expected http filter chain, found %s", fc.Filters[0].Name)
 				}
 
-				verifyHTTPFilterChainMatch(t, fc, model.TrafficDirectionOutbound, efc.IsTLS)
+				verifyHTTPFilterChainMatch(t, fc, model.TrafficDirectionOutbound, efc.isTLS)
+
+				hcm := xdstest.ExtractHTTPConnectionManager(t, fc)
+				if hcm.GetRds().RouteConfigName != efc.routeName {
+					t.Fatalf("expected http route name %s, found %s", efc.routeName, hcm.GetRds().RouteConfigName)
+				}
 			}
 		}
 

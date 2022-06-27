@@ -1579,6 +1579,40 @@ func TestOutboundListenerConfig_WithTlsTermination_WithSidecar(t *testing.T) {
 				Namespace: "default",
 			},
 		},
+		{
+			CreationTime: tnow.Add(3 * time.Second),
+			Hostname:     host.Name("foo.test.com"),
+			Address:      wildcardIP,
+			ClusterVIPs:  make(map[string]string),
+			Ports: model.PortList{
+				&model.Port{
+					Name:     "https",
+					Port:     443,
+					Protocol: protocol.HTTPS,
+				},
+			},
+			Resolution: model.DNSLB,
+			Attributes: model.ServiceAttributes{
+				Namespace: "default",
+			},
+		},
+		{
+			CreationTime: tnow.Add(3 * time.Second),
+			Hostname:     host.Name("bar.test.com"),
+			Address:      wildcardIP,
+			ClusterVIPs:  make(map[string]string),
+			Ports: model.PortList{
+				&model.Port{
+					Name:     "https",
+					Port:     443,
+					Protocol: protocol.HTTPS,
+				},
+			},
+			Resolution: model.DNSLB,
+			Attributes: model.ServiceAttributes{
+				Namespace: "default",
+			},
+		},
 	}
 
 	testOutboundListenerConfigWithSidecarWithTlsContext(t, services...)
@@ -1645,34 +1679,78 @@ func testOutboundListenerConfigWithSidecarWithTlsContext(t *testing.T, services 
 					},
 				},
 				{
+					Port: &networking.Port{
+						Number:   443,
+						Protocol: string(protocol.HTTPS),
+						Name:     "share-filterchain",
+					},
+					Hosts: []string{"*/foo.test.com", "*/bar.test.com"},
+					Tls: &networking.ServerTLSSettings{
+						Mode:           networking.ServerTLSSettings_SIMPLE,
+						CredentialName: "secret",
+					},
+				},
+				{
 					Hosts: []string{"*/*"},
 				},
 			},
 		},
 	}
 
-	expectedTlsContextResult := []*tls.DownstreamTlsContext{
+	expectedResults := []struct {
+		isHTTP      bool
+		serverNames []string
+		tlsContext  *tls.DownstreamTlsContext
+	}{
 		{
-			CommonTlsContext: &tls.CommonTlsContext{
-				AlpnProtocols: []string{"h2", "http/1.1"},
-				TlsCertificateSdsSecretConfigs: []*tls.SdsSecretConfig{
-					{
-						Name:      "file-cert:server-cert.crt~private-key.key",
-						SdsConfig: authn_model.AutoSdsConfig,
+			isHTTP:      true,
+			serverNames: []string{"test1.com"},
+			tlsContext: &tls.DownstreamTlsContext{
+				CommonTlsContext: &tls.CommonTlsContext{
+					AlpnProtocols: []string{"h2", "http/1.1"},
+					TlsCertificateSdsSecretConfigs: []*tls.SdsSecretConfig{
+						{
+							Name:      "file-cert:server-cert.crt~private-key.key",
+							SdsConfig: authn_model.AutoSdsConfig,
+						},
 					},
 				},
 			},
 		},
 		{
-			CommonTlsContext: &tls.CommonTlsContext{
-				AlpnProtocols: []string{"h2", "http/1.1"},
-				TlsCertificateSdsSecretConfigs: []*tls.SdsSecretConfig{
-					{
-						Name:      "auto://test2.com",
-						SdsConfig: authn_model.AutoSdsConfig,
+			isHTTP:      true,
+			serverNames: []string{"test2.com"},
+			tlsContext: &tls.DownstreamTlsContext{
+				CommonTlsContext: &tls.CommonTlsContext{
+					AlpnProtocols: []string{"h2", "http/1.1"},
+					TlsCertificateSdsSecretConfigs: []*tls.SdsSecretConfig{
+						{
+							Name:      "auto://test2.com",
+							SdsConfig: authn_model.AutoSdsConfig,
+						},
 					},
 				},
 			},
+		},
+		{
+			isHTTP:      true,
+			serverNames: []string{"foo.test.com", "bar.test.com"},
+			tlsContext: &tls.DownstreamTlsContext{
+				CommonTlsContext: &tls.CommonTlsContext{
+					AlpnProtocols: []string{"h2", "http/1.1"},
+					TlsCertificateSdsSecretConfigs: []*tls.SdsSecretConfig{
+						{
+							Name:      "kubernetes://secret",
+							SdsConfig: authn_model.SDSAdsConfigNoInitFetchTimeout,
+						},
+					},
+				},
+			},
+		},
+		{
+			isHTTP:      false,
+			serverNames: []string{"test3.com"},
+			tlsContext:  nil,
 		},
 	}
 
@@ -1684,31 +1762,33 @@ func testOutboundListenerConfigWithSidecarWithTlsContext(t *testing.T, services 
 	// t.Log(xdstest.DumpList(t, xdstest.InterfaceSlice(listeners)))
 
 	l := findListenerByPort(listeners, 443)
-	if len(l.FilterChains) != 3 {
-		t.Fatalf("expectd %d filter chains, found %d", 3, len(l.FilterChains))
+	if l == nil {
+		t.Fatalf("expected listener on port %d not found", 443)
 	}
 
-	if !isHTTPFilterChain(l.FilterChains[0]) {
-		t.Fatalf("expected http filter chain, found %s", l.FilterChains[0].Filters[0].Name)
-	}
-	verifyHTTPFilterChainMatch(t, l.FilterChains[0], model.TrafficDirectionOutbound, true)
-	if err := verifyDownstreamTlsContext(l.FilterChains[0].TransportSocket.GetTypedConfig(), expectedTlsContextResult[0]); err != nil {
-		t.Fatal(err)
+	if len(l.FilterChains) != len(expectedResults) {
+		t.Fatalf("expectd %d filter chains, found %d", len(expectedResults), len(l.FilterChains))
 	}
 
-	if !isHTTPFilterChain(l.FilterChains[1]) {
-		t.Fatalf("expected http filter chain, found %s", l.FilterChains[1].Filters[0].Name)
+	for _, expect := range expectedResults {
+		fc := xdstest.ExtractFilterChain(expect.serverNames, l)
+		if fc == nil {
+			t.Fatalf("expected http filter chain not found: %s", expect.serverNames)
+		}
+		if expect.isHTTP {
+			if !isHTTPFilterChain(fc) {
+				t.Fatalf("expected http filter chain, found %s", fc.Filters[0].Name)
+			}
+			verifyHTTPFilterChainMatch(t, fc, model.TrafficDirectionOutbound, true)
+			if err := verifyDownstreamTlsContext(fc.TransportSocket.GetTypedConfig(), expect.tlsContext); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			if !isTCPFilterChain(fc) {
+				t.Fatalf("expected tcp filter chain, found %s", fc.Filters[0].Name)
+			}
+		}
 	}
-
-	verifyHTTPFilterChainMatch(t, l.FilterChains[1], model.TrafficDirectionOutbound, true)
-	if err := verifyDownstreamTlsContext(l.FilterChains[1].TransportSocket.GetTypedConfig(), expectedTlsContextResult[1]); err != nil {
-		t.Fatal(err)
-	}
-
-	if !isTCPFilterChain(l.FilterChains[2]) {
-		t.Fatalf("expected tcp filter chain, found %s", l.FilterChains[2].Filters[0].Name)
-	}
-
 }
 
 func TestOutboundListenerAccessLogs(t *testing.T) {
@@ -2905,9 +2985,9 @@ func TestMergeTCPFilterChains(t *testing.T) {
 	}
 
 	opts := buildListenerOpts{
-		proxy:   node,
-		push:    push,
-		service: &svc,
+		proxy:    node,
+		push:     push,
+		services: []*model.Service{&svc},
 	}
 
 	out := mergeTCPFilterChains(incomingFilterChains, opts, "0.0.0.0_443", listenerMap)
