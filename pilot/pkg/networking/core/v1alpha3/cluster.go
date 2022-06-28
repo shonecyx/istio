@@ -416,6 +416,7 @@ const (
 func buildAutoMtlsSettings(
 	tls *networking.ClientTLSSettings,
 	serviceAccounts []string,
+	sni string,
 	proxy *model.Proxy,
 	autoMTLSEnabled bool,
 	meshExternal bool,
@@ -425,11 +426,18 @@ func buildAutoMtlsSettings(
 			return tls, userSupplied
 		}
 
+		// Update TLS settings for ISTIO_MUTUAL.
+		// Use client provided SNI if set. Otherwise, overwrite with the auto generated SNI
+		// user specified SNIs in the istio mtls settings are useful when routing via gateways.
+		sniToUse := tls.Sni
+		if len(sniToUse) == 0 {
+			sniToUse = sni
+		}
 		subjectAltNamesToUse := tls.SubjectAltNames
 		if len(subjectAltNamesToUse) == 0 {
 			subjectAltNamesToUse = serviceAccounts
 		}
-		return buildIstioMutualTLS(subjectAltNamesToUse, tls.Sni, proxy), userSupplied
+		return buildIstioMutualTLS(subjectAltNamesToUse, sniToUse, proxy), userSupplied
 	}
 
 	if meshExternal || !autoMTLSEnabled || serviceMTLSMode == model.MTLSUnknown || serviceMTLSMode == model.MTLSDisable {
@@ -437,7 +445,7 @@ func buildAutoMtlsSettings(
 	}
 
 	// Build settings for auto MTLS.
-	return buildIstioMutualTLS(serviceAccounts, "", proxy), autoDetected
+	return buildIstioMutualTLS(serviceAccounts, sni, proxy), autoDetected
 }
 
 // buildIstioMutualTLS returns a `TLSSettings` for ISTIO_MUTUAL mode.

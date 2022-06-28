@@ -599,7 +599,7 @@ func (cb *ClusterBuilder) applyTrafficPolicy(opts buildClusterOpts) {
 	if opts.clusterMode != SniDnatClusterMode && opts.direction != model.TrafficDirectionInbound {
 		autoMTLSEnabled := opts.mesh.GetEnableAutoMtls().Value
 		var mtlsCtxType mtlsContextType
-		tls, mtlsCtxType = buildAutoMtlsSettings(tls, opts.serviceAccounts, opts.proxy,
+		tls, mtlsCtxType = buildAutoMtlsSettings(tls, opts.serviceAccounts, opts.istioMtlsSni, opts.proxy,
 			autoMTLSEnabled, opts.meshExternal, opts.serviceMTLSMode)
 		cb.applyUpstreamTLSSettings(&opts, tls, mtlsCtxType)
 	}
@@ -759,21 +759,11 @@ func (cb *ClusterBuilder) buildUpstreamClusterTLSContext(opts *buildClusterOpts,
 					authn_model.SDSRootResourceName), proxy),
 			},
 		}
-
-		// Update TLS settings for ISTIO_MUTUAL. Use client provided SNI if set. Otherwise,
-		// overwrite with the auto generated SNI. User specified SNIs in the istio mtls settings
-		// are useful when routing via gateways.
-		if len(tlsContext.Sni) == 0 {
-			if autoSni := cb.setAutoSni(c, tls); !autoSni {
-				if len(opts.istioMtlsSni) != 0 {
-					tlsContext.Sni = opts.istioMtlsSni
-				} else {
-					// Set default SNI of cluster name for istio_mutual if istio mtls sni is not set.
-					// This could happen for inbound cluster.
-					tlsContext.Sni = c.cluster.Name
-				}
-			}
+		// Set default SNI of cluster name for istio_mutual if sni is not set.
+		if len(tls.Sni) == 0 {
+			tlsContext.Sni = c.cluster.Name
 		}
+
 		// `istio-peer-exchange` alpn is only used when using mtls communication between peers.
 		// We add `istio-peer-exchange` to the list of alpn strings.
 		// The code has repeated snippets because We want to use predefined alpn strings for efficiency.
@@ -893,10 +883,8 @@ func (cb *ClusterBuilder) buildUpstreamClusterTLSContext(opts *buildClusterOpts,
 	return tlsContext, nil
 }
 
-func (cb *ClusterBuilder) setAutoSni(mc *MutableCluster, tls *networking.ClientTLSSettings) (setAutoSni bool) {
-	setAutoSni = false
+func (cb *ClusterBuilder) setAutoSni(mc *MutableCluster, tls *networking.ClientTLSSettings) {
 	if mc != nil && features.EnableAutoSni && len(tls.Sni) == 0 {
-		setAutoSni = true
 		if mc.httpProtocolOptions == nil {
 			mc.httpProtocolOptions = &http.HttpProtocolOptions{}
 		}
@@ -905,7 +893,6 @@ func (cb *ClusterBuilder) setAutoSni(mc *MutableCluster, tls *networking.ClientT
 		}
 		mc.httpProtocolOptions.UpstreamHttpProtocolOptions.AutoSni = true
 	}
-	return
 }
 
 func (cb *ClusterBuilder) setUseDownstreamProtocol(mc *MutableCluster) {
