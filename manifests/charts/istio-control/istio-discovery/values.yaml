@@ -78,6 +78,11 @@ pilot:
     # The header name which used to specify destination instance.
     header: "istio.workload.endpoint"
 
+  sidecar:
+    egress:
+      # Enable auto SNI for Sidecar's egress gateway outbound clsuter
+      enableEgressGatewayAutoSNI: true
+
 sidecarInjectorWebhook:
   # If enabled, the legacy webhook selection logic will be used. This relies on filtering of webhook
   # requests in Istiod, rather than at the webhook selection level.

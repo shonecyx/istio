@@ -1,0 +1,33 @@
+{{- if .Values.pilot.sidecar.egress.enableEgressGatewayAutoSNI }}
+{{ $gateway := index .Values "gateways" "istio-egressgateway" }}
+{{- if not $gateway.customService }}
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: enable-sidecar-egress-auto-sni-{{ $gateway.name }}-1.10
+  {{- if .Values.meshConfig.rootNamespace }}
+  namespace: {{ .Values.meshConfig.rootNamespace }}
+  {{- else }}
+  namespace: {{ .Release.Namespace }}
+  {{- end }}
+  labels:
+    istio.io/rev: {{ .Values.revision | default "default" }}
+    install.operator.istio.io/owning-resource: {{ .Values.ownerName | default "unknown" }}
+    operator.istio.io/component: "EgressGateways"
+spec:
+ configPatches:
+  - applyTo: CLUSTER
+    match:
+      context: SIDECAR_OUTBOUND
+      proxy:
+        proxyVersion: '^1\.10.*'
+      cluster:
+        service: {{ $gateway.name }}.{{ .Release.Namespace }}.svc.{{ .Values.global.proxy.clusterDomain }}
+    patch:
+      operation: MERGE
+      value:
+        upstream_http_protocol_options:
+          auto_sni: true
+---
+{{ end }}
+{{ end }}
