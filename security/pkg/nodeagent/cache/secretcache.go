@@ -596,6 +596,9 @@ func (sc *SecretManagerClient) generateNewSecret(resourceName string) (*security
 		// TODO: add metric for auto cert CSR signing is enabled
 
 	} else {
+		if strings.HasPrefix(resourceName, ca.AutoCertPrefix) {
+			return nil, fmt.Errorf("auto CA cert injection is disabled. Missing 'AUTO_ROOT_CA_PATH' environment variable")
+		}
 		numOutgoingRequests.With(RequestType.Value(monitoring.CSR)).Increment()
 		timeBeforeCSR := time.Now()
 		certChainPEM, err = sc.caClient.CSRSign(csrPEM, int64(sc.configOptions.SecretTTL.Seconds()))

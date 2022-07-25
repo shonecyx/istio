@@ -168,7 +168,7 @@ type Options struct {
 	// where the write operation of key and cert take longer.
 	FileDebounceDuration time.Duration
 
-	// path for eBat Tess auto root CA cert/key, for self-signing envoy-proxy CSR certificates, as part of
+	// path for eBay Tess auto root CA cert/key, for self-signing envoy-proxy CSR certificates, as part of
 	// application container TLS request termination
 	AutoRootCAPath string
 }

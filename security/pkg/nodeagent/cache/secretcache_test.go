@@ -609,6 +609,7 @@ func TestAutoCACertGenerateSecret(t *testing.T) {
 		expectedCN       string
 		expectedDNSNames []string
 		expectedIssuer   string
+		expectedError    string
 		isEnabled        bool
 	}{
 		{
@@ -646,6 +647,14 @@ func TestAutoCACertGenerateSecret(t *testing.T) {
 			expectedDNSNames: []string{"test"},
 			expectedIssuer:   "CN=Istio CA,O=Istio,L=Sunnyvale,ST=California,C=US",
 		},
+		{
+			name:             "valid non-auto xxxx",
+			resourceName:     "auto://fake.ebay.com:bar.ebay.com",
+			expectedCN:       "",
+			expectedDNSNames: []string{"test"},
+			expectedIssuer:   "CN=Istio CA,O=Istio,L=Sunnyvale,ST=California,C=US",
+			expectedError:    "failed to generate workload certificate: auto CA cert injection is disabled. Missing 'AUTO_ROOT_CA_PATH' environment variable",
+		},
 	}
 
 	for _, c := range cases {
@@ -658,7 +667,12 @@ func TestAutoCACertGenerateSecret(t *testing.T) {
 
 			gotSecret, err := sc.GenerateSecret(c.resourceName)
 			if err != nil {
-				t.Fatalf("Failed to get secrets: %v", err)
+				if c.expectedError != "" {
+					if !strings.Contains(err.Error(), c.expectedError) {
+						t.Fatalf("expected error %q got %q", c.expectedError, err)
+					}
+					return
+				}
 			}
 
 			block, _ := pem.Decode(gotSecret.CertificateChain)
