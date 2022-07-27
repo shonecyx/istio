@@ -648,7 +648,7 @@ func TestAutoCACertGenerateSecret(t *testing.T) {
 			expectedIssuer:   "CN=Istio CA,O=Istio,L=Sunnyvale,ST=California,C=US",
 		},
 		{
-			name:             "valid non-auto xxxx",
+			name:             "valid auto cert resource name without enable auto CA cert injection",
 			resourceName:     "auto://fake.ebay.com:bar.ebay.com",
 			expectedCN:       "",
 			expectedDNSNames: []string{"test"},
