@@ -97,7 +97,7 @@ func MergeGateways(gateways ...config.Config) *MergedGateway {
 	serversByRouteName := make(map[string][]*networking.Server)
 	tlsServerInfo := make(map[*networking.Server]*TLSServerInfo)
 	gatewayNameForServer := make(map[*networking.Server]string)
-	tlsHostsByPort := map[uint32]sets.Set{} // port -> host set
+	tlsHostsByPort := map[uint32]map[string]string{} // port -> host/bind map
 
 	log.Debugf("MergeGateways: merging %d gateways", len(gateways))
 	for _, gatewayConfig := range gateways {
@@ -124,9 +124,9 @@ func MergeGateways(gateways ...config.Config) *MergedGateway {
 				// To avoid this, we need to make sure we don't have duplicated hosts, which will become
 				// SNI filter chain matches.
 				if tlsHostsByPort[s.Port.Number] == nil {
-					tlsHostsByPort[s.Port.Number] = sets.NewSet()
+					tlsHostsByPort[s.Port.Number] = map[string]string{}
 				}
-				if duplicateHosts := CheckDuplicates(s.Hosts, tlsHostsByPort[s.Port.Number]); len(duplicateHosts) != 0 {
+				if duplicateHosts := CheckDuplicates(s.Hosts, s.Bind, tlsHostsByPort[s.Port.Number]); len(duplicateHosts) != 0 {
 					log.Debugf("skipping server on gateway %s, duplicate host names: %v", gatewayName, duplicateHosts)
 					RecordRejectedConfig(gatewayName)
 					continue
@@ -260,17 +260,17 @@ func GetSNIHostsForServer(server *networking.Server) []string {
 
 // CheckDuplicates returns all of the hosts provided that are already known
 // If there were no duplicates, all hosts are added to the known hosts.
-func CheckDuplicates(hosts []string, knownHosts sets.Set) []string {
+func CheckDuplicates(hosts []string, bind string, knownHosts map[string]string) []string {
 	var duplicates []string
 	for _, h := range hosts {
-		if knownHosts.Contains(h) {
+		if existingBind, ok := knownHosts[h]; ok && bind == existingBind {
 			duplicates = append(duplicates, h)
 		}
 	}
 	// No duplicates found, so we can mark all of these hosts as known
 	if len(duplicates) == 0 {
 		for _, h := range hosts {
-			knownHosts.Insert(h)
+			knownHosts[h] = bind
 		}
 	}
 	return duplicates
