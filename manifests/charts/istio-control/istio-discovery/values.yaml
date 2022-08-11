@@ -398,12 +398,7 @@ global:
       initContainer:
         # For production deployment, do not use `Always`.
         imagePullPolicy: IfNotPresent
-        # Raptor Java application
-        openjre:
-          image: ""
-        # Node.js application
-        nodejs:
-          image: ""
+        image: ""
 
   proxy_init:
     # Base name for the proxy_init container, used to configure iptables.

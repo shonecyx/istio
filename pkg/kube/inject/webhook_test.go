@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -1211,173 +1212,228 @@ func defaultInstallPackageDir() string {
 	return filepath.Join(wd, "../../../manifests/")
 }
 
+func setDefaultPostProcessPod() {
+
+}
+
+func getContainersIndex(appContainerName string, sidecars int) map[string]int {
+	var i int
+	m := map[string]int{
+		appContainerName: i,
+	}
+	for i = 1; i < sidecars+1; i++ {
+		m["sidecar"+strconv.Itoa(i)] = i
+	}
+
+	m["some-container"] = i
+	i++
+	m["istio-proxy"] = i
+
+	return m
+
+}
+
 func TestPostProcessPod(t *testing.T) {
+	const (
+		appStackIdAnnotationKey      = "application.tess.io/stackId"
+		sidecarsStackIdAnnotationKey = "application.tess.io/sidecars-stackId"
+		appContainerNameAnnotation   = "application.tess.io/app-container-name"
+		pcDefaultAnnotations         = `{
+			"concurrency": 20,
+			"proxyMetadata": {
+				"INJECT_AUTO_CERT": "true"
+			}
+		}`
+	)
 
 	var (
 		specErr, annotationErr, volumeErr error
+		defaultAutoCAVolumes              = []corev1.Volume{
+			{
+				Name:         sharedRaptorJRECACertsVolumeName,
+				VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+			},
+			{
+				Name:         sharedNodeJSCACertsVolumeName,
+				VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+			},
+			{
+				Name:         sharedCAKeyVolumeName,
+				VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+			},
+		}
 	)
 
 	cases := []struct {
-		name                         string
-		appContainerName             string
-		pcAnnotations                string
-		want                         *corev1.Pod
-		volumes                      []corev1.Volume
-		shouldAppendAppVolumeMount   bool
-		shouldAppendProxyVolumeMount bool
-		shouldAppendExtraCAEnv       bool
-		isValid                      bool
-		errMsg                       string
+		name                           string
+		appContainerName               string
+		pcAnnotations                  string
+		stackIdAnnotations             string
+		sidecarsStackIdAnnotations     string
+		appVolumeMountName             string
+		appVolumeMountPath             string
+		sidecarVolumeMountName         string
+		sidecarVolumeMountPath         string
+		want                           *corev1.Pod
+		volumes                        []corev1.Volume
+		numOfSidecars                  int
+		shouldAppendAppVolumeMount     bool
+		shouldAppendSidecarVolumeMount bool
+		shouldAppendProxyVolumeMount   bool
+		shouldAppendExtraCAEnv         bool
+		isValid                        bool
+		errMsg                         string
 	}{
 		{
-			name:             "valid java framework auto cacerts injection",
-			appContainerName: "app",
-			pcAnnotations: `{
-	"concurrency": 20,
-	"proxyMetadata": {
-		"INJECT_AUTO_CERT": "JAVA_FW",
-		"APP_CONTAINER_NAME": "app"	
-	}
-}`,
-			volumes: []corev1.Volume{
-				{
-					Name:         sharedCACertsVolumeName,
-					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
-				},
-				{
-					Name:         sharedCAKeyVolumeName,
-					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
-				},
-			},
-			shouldAppendAppVolumeMount:   true,
-			shouldAppendProxyVolumeMount: true,
-			isValid:                      true,
+			name:                       "valid java framework auto cacerts injection",
+			appContainerName:           "app",
+			stackIdAnnotations:         "raptorservice.marketplace",
+			sidecarsStackIdAnnotations: `{"sidecar1": "raptorservice.marketplace"}`,
+			numOfSidecars:              1,
+			pcAnnotations:              pcDefaultAnnotations,
+			appVolumeMountName:         sharedRaptorJRECACertsVolumeName,
+			appVolumeMountPath:         sharedRaptorJRElibVolumeMountPath,
+			sidecarVolumeMountName:     sharedRaptorJRECACertsVolumeName,
+			sidecarVolumeMountPath:     sharedRaptorJRElibVolumeMountPath,
+
+			volumes:                        defaultAutoCAVolumes,
+			shouldAppendAppVolumeMount:     true,
+			shouldAppendSidecarVolumeMount: true,
+			shouldAppendProxyVolumeMount:   true,
+			isValid:                        true,
 		},
 		{
-			name:             "valid nodejs framework auto cacerts injection",
-			appContainerName: "app",
-			pcAnnotations: `{
-			"concurrency": 20,
-			"proxyMetadata": {
-				"INJECT_AUTO_CERT": "NODEJS_FW",
-				"APP_CONTAINER_NAME": "app"
-			}
-		}`,
-			volumes: []corev1.Volume{
-				{
-					Name:         sharedCACertsVolumeName,
-					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
-				},
-				{
-					Name:         sharedCAKeyVolumeName,
-					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
-				},
-			},
-			shouldAppendAppVolumeMount:   true,
-			shouldAppendProxyVolumeMount: true,
-			shouldAppendExtraCAEnv:       true,
-			isValid:                      true,
+			name:                           "valid nodejs framework auto cacerts injection",
+			appContainerName:               "app",
+			stackIdAnnotations:             "nodejs.marketplace",
+			sidecarsStackIdAnnotations:     `{"sidecar1": "raptorservice.marketplace"}`,
+			numOfSidecars:                  1,
+			pcAnnotations:                  pcDefaultAnnotations,
+			appVolumeMountName:             sharedNodeJSCACertsVolumeName,
+			appVolumeMountPath:             sharedAppCACertsVolumeMountPath,
+			sidecarVolumeMountName:         sharedRaptorJRECACertsVolumeName,
+			sidecarVolumeMountPath:         sharedRaptorJRElibVolumeMountPath,
+			volumes:                        defaultAutoCAVolumes,
+			shouldAppendAppVolumeMount:     true,
+			shouldAppendSidecarVolumeMount: true,
+			shouldAppendProxyVolumeMount:   true,
+			shouldAppendExtraCAEnv:         true,
+			isValid:                        true,
+		},
+		{
+			name:                       "valid java framework auto cacerts injection without sidecar",
+			appContainerName:           "app",
+			stackIdAnnotations:         "raptorservice.marketplace",
+			sidecarsStackIdAnnotations: `{}`,
+			pcAnnotations:              pcDefaultAnnotations,
+			appVolumeMountName:         sharedRaptorJRECACertsVolumeName,
+			appVolumeMountPath:         sharedRaptorJRElibVolumeMountPath,
+			sidecarVolumeMountName:     sharedRaptorJRECACertsVolumeName,
+			sidecarVolumeMountPath:     sharedRaptorJRElibVolumeMountPath,
+
+			volumes:                        defaultAutoCAVolumes,
+			shouldAppendAppVolumeMount:     true,
+			shouldAppendSidecarVolumeMount: false,
+			shouldAppendProxyVolumeMount:   true,
+			isValid:                        true,
+		},
+		{
+			name:                       "valid java framework auto cacerts injection with 2 sidecars",
+			appContainerName:           "app",
+			stackIdAnnotations:         "raptorservice.marketplace",
+			sidecarsStackIdAnnotations: `{"sidecar1": "raptorservice.marketplace", "sidecar2": "raptorservice.marketplace"}`,
+			numOfSidecars:              2,
+			pcAnnotations:              pcDefaultAnnotations,
+			appVolumeMountName:         sharedRaptorJRECACertsVolumeName,
+			appVolumeMountPath:         sharedRaptorJRElibVolumeMountPath,
+			sidecarVolumeMountName:     sharedRaptorJRECACertsVolumeName,
+			sidecarVolumeMountPath:     sharedRaptorJRElibVolumeMountPath,
+
+			volumes:                        defaultAutoCAVolumes,
+			shouldAppendAppVolumeMount:     true,
+			shouldAppendSidecarVolumeMount: true,
+			shouldAppendProxyVolumeMount:   true,
+			isValid:                        true,
 		},
 		{
 			name:             "valid disabled auto cacerts injection",
 			appContainerName: "app",
 			pcAnnotations: `{
-	"concurrency": 20,
-	"proxyMetadata": {
-		"SOME_KEY": "SOME_VALUE"
-	}
-}`,
-			volumes:                      nil,
-			shouldAppendAppVolumeMount:   false,
-			shouldAppendProxyVolumeMount: false,
-			isValid:                      true,
+			"concurrency": 20,
+			"proxyMetadata": {
+				"INJECT_AUTO_CERT": "false"
+			}
+		}`,
+			volumes:                        nil,
+			shouldAppendAppVolumeMount:     false,
+			shouldAppendSidecarVolumeMount: false,
+			shouldAppendProxyVolumeMount:   false,
+			isValid:                        true,
 		},
 		{
-			name:             "missing application container volume mount",
-			appContainerName: "app",
-			pcAnnotations: `{
-	"concurrency": 20,
-	"proxyMetadata": {
-		"INJECT_AUTO_CERT": "JAVA_FW",
-		"APP_CONTAINER_NAME": "app"	
-	}
-}`,
-			volumes: []corev1.Volume{
-				{
-					Name:         sharedCACertsVolumeName,
-					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
-				},
-				{
-					Name:         sharedCAKeyVolumeName,
-					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
-				},
-			},
-			shouldAppendAppVolumeMount:   false,
-			shouldAppendProxyVolumeMount: true,
+			name:                           "valid custom application container name",
+			appContainerName:               "foo",
+			stackIdAnnotations:             "raptorservice.marketplace",
+			sidecarsStackIdAnnotations:     `{}`,
+			pcAnnotations:                  pcDefaultAnnotations,
+			appVolumeMountName:             sharedRaptorJRECACertsVolumeName,
+			appVolumeMountPath:             sharedRaptorJRElibVolumeMountPath,
+			volumes:                        defaultAutoCAVolumes,
+			shouldAppendAppVolumeMount:     true,
+			shouldAppendSidecarVolumeMount: false,
+			shouldAppendProxyVolumeMount:   true,
+			isValid:                        true,
 		},
 		{
-			name:             "missing istio-proxy container volume mount",
-			appContainerName: "app",
-			pcAnnotations: `{
-	"concurrency": 20,
-	"proxyMetadata": {
-		"INJECT_AUTO_CERT": "JAVA_FW",
-		"APP_CONTAINER_NAME": "app"	
-	}
-}`,
-			volumes: []corev1.Volume{
-				{
-					Name:         sharedCACertsVolumeName,
-					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
-				},
-				{
-					Name:         sharedCAKeyVolumeName,
-					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
-				},
-			},
+			name:                           "missing application container volume mount",
+			appContainerName:               "app",
+			stackIdAnnotations:             "raptorservice.marketplace",
+			sidecarsStackIdAnnotations:     `{"sidecar1": "raptorservice.marketplace"}`,
+			numOfSidecars:                  1,
+			pcAnnotations:                  pcDefaultAnnotations,
+			volumes:                        defaultAutoCAVolumes,
+			shouldAppendAppVolumeMount:     false,
+			shouldAppendSidecarVolumeMount: true,
+			shouldAppendProxyVolumeMount:   true,
+			isValid:                        false,
+		},
+		{
+			name:                         "missing istio-proxy container volume mount",
+			appContainerName:             "app",
+			stackIdAnnotations:           "raptorservice.marketplace",
+			pcAnnotations:                pcDefaultAnnotations,
+			sidecarsStackIdAnnotations:   `{}`,
+			volumes:                      defaultAutoCAVolumes,
 			shouldAppendAppVolumeMount:   true,
 			shouldAppendProxyVolumeMount: false,
 			isValid:                      false,
 		},
 		{
-			name:             "invalid application container name",
-			appContainerName: "app",
-			pcAnnotations: `{
-	"concurrency": 20,
-	"proxyMetadata": {
-		"INJECT_AUTO_CERT": "JAVA_FW",
-		"APP_CONTAINER_NAME": "invalid"	
-	}
-}`,
-			volumes: []corev1.Volume{
-				{
-					Name:         sharedCACertsVolumeName,
-					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
-				},
-				{
-					Name:         sharedCAKeyVolumeName,
-					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
-				},
-			},
-			shouldAppendAppVolumeMount:   true,
-			shouldAppendProxyVolumeMount: true,
+			name:                         "invalid application container stackId",
+			appContainerName:             "app",
+			stackIdAnnotations:           "invalid.stackId",
+			pcAnnotations:                pcDefaultAnnotations,
+			sidecarsStackIdAnnotations:   `{}`,
+			volumes:                      defaultAutoCAVolumes,
+			shouldAppendAppVolumeMount:   false,
+			shouldAppendProxyVolumeMount: false,
 			isValid:                      false,
-			errMsg: `could not find matching application name in proxyMetadata
-'map[APP_CONTAINER_NAME:invalid INJECT_AUTO_CERT:JAVA_FW]'`,
+			errMsg:                       `could not find matching application stackId 'invalid.stackId'`,
 		},
 		{
-			name:             "invalid application supported framework value",
-			appContainerName: "app",
-			pcAnnotations: `{
-	"concurrency": 20,
-	"proxyMetadata": {
-		"INJECT_AUTO_CERT": "INVALID_FW",
-		"APP_CONTAINER_NAME": "app"	
-	}
-}`,
+			name:                       "missing nodejs application root ca volume",
+			appContainerName:           "app",
+			stackIdAnnotations:         "nodejs.marketplace",
+			sidecarsStackIdAnnotations: `{"sidecar1": "raptorservice.marketplace"}`,
+			numOfSidecars:              1,
+			pcAnnotations:              pcDefaultAnnotations,
+			appVolumeMountName:         sharedNodeJSCACertsVolumeName,
+			appVolumeMountPath:         sharedAppCACertsVolumeMountPath,
+			sidecarVolumeMountName:     sharedRaptorJRECACertsVolumeName,
+			sidecarVolumeMountPath:     sharedRaptorJRElibVolumeMountPath,
 			volumes: []corev1.Volume{
 				{
-					Name:         sharedCACertsVolumeName,
+					Name:         sharedRaptorJRECACertsVolumeName,
 					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
 				},
 				{
@@ -1385,33 +1441,11 @@ func TestPostProcessPod(t *testing.T) {
 					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
 				},
 			},
-			shouldAppendAppVolumeMount:   true,
-			shouldAppendProxyVolumeMount: true,
-			isValid:                      false,
-		},
-		{
-			name:             "missing proxy metadata inject auto cert key",
-			appContainerName: "app",
-			pcAnnotations: `{
-	"concurrency": 20,
-	"proxyMetadata": {
-		"INVALID_KEY": "JAVA_FW",
-		"APP_CONTAINER_NAME": "app"	
-	}
-}`,
-			volumes: []corev1.Volume{
-				{
-					Name:         sharedCACertsVolumeName,
-					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
-				},
-				{
-					Name:         sharedCAKeyVolumeName,
-					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
-				},
-			},
-			shouldAppendAppVolumeMount:   true,
-			shouldAppendProxyVolumeMount: true,
-			isValid:                      false,
+			shouldAppendAppVolumeMount:     true,
+			shouldAppendSidecarVolumeMount: true,
+			shouldAppendProxyVolumeMount:   true,
+			shouldAppendExtraCAEnv:         true,
+			isValid:                        false,
 		},
 	}
 
@@ -1423,45 +1457,76 @@ func TestPostProcessPod(t *testing.T) {
 				Annotations: map[string]string{
 					annotation.SidecarInject.Name: "true",
 					annotation.ProxyConfig.Name:   tc.pcAnnotations,
-				},
-			},
-			Spec: corev1.PodSpec{
-				Containers: []corev1.Container{
-					{
-						Name: tc.appContainerName,
-					},
-					{
-						// we expect that shared volume won't be mounted for this additional container
-						Name: "some-container",
-					},
-					{
-						Name: "istio-proxy",
-					},
+					appStackIdAnnotationKey:       tc.stackIdAnnotations,
+					sidecarsStackIdAnnotationKey:  tc.sidecarsStackIdAnnotations,
 				},
 			},
 		}
+		sidecars := []corev1.Container{}
+		for i := 0; i < tc.numOfSidecars; i++ {
+			sidecars = append(sidecars, corev1.Container{Name: "sidecar" + strconv.Itoa(i+1)})
+		}
+
+		if tc.appContainerName != "app" {
+			pod.Annotations[appContainerNameAnnotation] = tc.appContainerName
+		}
+
+		//TODO: executing postProcessPod might reorder containers, this is why they were added accordingly to pass test deepEqual comparison
+		pod.Spec.Containers = append(pod.Spec.Containers, corev1.Container{Name: tc.appContainerName})
+		pod.Spec.Containers = append(pod.Spec.Containers, sidecars...)
+		pod.Spec.Containers = append(pod.Spec.Containers, corev1.Container{Name: "some-container"}, corev1.Container{Name: "istio-proxy"})
+
 		actual := pod.DeepCopy()
 		tc.want = pod.DeepCopy()
 
+		indecs := getContainersIndex(tc.appContainerName, tc.numOfSidecars)
+
 		if tc.shouldAppendExtraCAEnv {
-			tc.want.Spec.Containers[0].Env = append(tc.want.Spec.Containers[0].Env, corev1.EnvVar{
-				Name:  nodeJSExtraCACerts,
-				Value: sharedAppCACertsVolumeMountPath + "/" + nodeJSExtraCACertsFile,
-			})
+			tc.want.Spec.Containers[indecs[tc.appContainerName]].Env = append(
+				tc.want.Spec.Containers[indecs[tc.appContainerName]].Env, corev1.EnvVar{
+					Name:  nodeJSExtraCACerts,
+					Value: tc.appVolumeMountPath + "/" + nodeJSExtraCACertsFile,
+				})
 		}
 
 		if tc.shouldAppendAppVolumeMount {
-			tc.want.Spec.Containers[0].VolumeMounts = append(tc.want.Spec.Containers[0].VolumeMounts,
+			tc.want.Spec.Containers[indecs[tc.appContainerName]].VolumeMounts = append(
+				tc.want.Spec.Containers[indecs[tc.appContainerName]].VolumeMounts,
 				corev1.VolumeMount{
-					Name:      sharedCACertsVolumeName,
-					MountPath: sharedAppCACertsVolumeMountPath})
+					Name:      tc.appVolumeMountName,
+					MountPath: tc.appVolumeMountPath,
+					ReadOnly:  true,
+				})
 		}
+
+		if tc.shouldAppendSidecarVolumeMount {
+			for i := 0; i < tc.numOfSidecars; i++ {
+				index := indecs["sidecar"+strconv.Itoa(i+1)]
+				tc.want.Spec.Containers[index].VolumeMounts = append(
+					tc.want.Spec.Containers[index].VolumeMounts,
+					corev1.VolumeMount{
+						Name:      tc.sidecarVolumeMountName,
+						MountPath: tc.sidecarVolumeMountPath,
+						ReadOnly:  true,
+					})
+			}
+
+		}
+
 		if tc.shouldAppendProxyVolumeMount {
-			tc.want.Spec.Containers[2].VolumeMounts = append(
-				tc.want.Spec.Containers[1].VolumeMounts,
+			tc.want.Spec.Containers[indecs["istio-proxy"]].VolumeMounts = append(
+				tc.want.Spec.Containers[indecs["istio-proxy"]].VolumeMounts,
 				corev1.VolumeMount{
 					Name:      sharedCAKeyVolumeName,
-					MountPath: sharedProxyCAVolumeMountPath})
+					MountPath: sharedProxyCAVolumeMountPath,
+					ReadOnly:  true,
+				})
+
+			tc.want.Spec.Containers[indecs["istio-proxy"]].Env = append(
+				tc.want.Spec.Containers[indecs["istio-proxy"]].Env, corev1.EnvVar{
+					Name:  autoRootCAPath,
+					Value: sharedProxyCAVolumeMountPath,
+				})
 
 		}
 

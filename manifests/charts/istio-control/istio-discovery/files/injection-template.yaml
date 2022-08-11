@@ -175,18 +175,13 @@ spec:
   {{ end }}
   {{- range $key, $value := .ProxyConfig.ProxyMetadata }}
   {{- if eq $key "INJECT_AUTO_CERT" }}
-  {{- if or (eq $value "JAVA_FW") (eq $value "NODEJS_FW") }}
+  {{- if or (eq $value "JAVA_FW") (eq $value "NODEJS_FW") (eq $value `true`) }}
   - name: istio-auto-cacert
-    {{- if eq $value "JAVA_FW" }}
-    image: "{{ $.Values.global.proxy.autoCert.initContainer.openjre.image }}"
-    {{- end }}
-    {{- if eq $value "NODEJS_FW" }}
-    image: "{{ $.Values.global.proxy.autoCert.initContainer.nodejs.image }}"
-    {{- end }}
+    image: "{{ $.Values.global.proxy.autoCert.initContainer.image }}"
     imagePullPolicy: "{{ valueOrDefault $.Values.global.proxy.autoCert.initContainer.imagePullPolicy `Always` }}"
     args:
       - -c
-      - {{  printf "/build/import-auto-root-ca.sh %s /build/bundled-cacerts /usr/local/share/istio-auto-ca-certificates /usr/local/share/istio-auto-ca" $value }}
+      - /build/import-auto-root-ca.sh
     command:
       - /bin/sh
     resources:
@@ -203,8 +198,10 @@ spec:
     volumeMounts:
     - name: build-cacerts
       mountPath: /build/bundled-cacerts
-    - name: istio-auto-ca-cert
-      mountPath: /usr/local/share/istio-auto-ca-certificates
+    - name: istio-auto-ca-openjre-cert
+      mountPath: /usr/local/share/istio-auto-ca-certificates/openjre
+    - name: istio-auto-ca-nodejs-cert
+      mountPath: /usr/local/share/istio-auto-ca-certificates/nodejs
     - name: istio-auto-ca
       mountPath: /usr/local/share/istio-auto-ca
   {{- end }}
@@ -509,7 +506,7 @@ spec:
   # used by istio-auto-cacert initContainer
   {{- range $key, $value := .ProxyConfig.ProxyMetadata }}
   {{- if eq $key "INJECT_AUTO_CERT" }}
-  {{- if or (eq $value "JAVA_FW") (eq $value "NODEJS_FW") }}
+  {{- if or (eq $value "JAVA_FW") (eq $value "NODEJS_FW") (eq $value `true`) }}
   - name: build-cacerts
     emptyDir: {}
   {{- end }}
