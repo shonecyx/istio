@@ -12,12 +12,10 @@ spec:
       labels:
         app: auto-cacerts-injection
       annotations:
-        proxy.istio.io/config: |-
-          concurrency: 10
-          proxyMetadata: 
-            INJECT_AUTO_CERT: JAVA_FW
-            APP_CONTAINER_NAME: dummy-app-1
- 
+        application.tess.io/app-container-name: dummy-app-1
+        application.tess.io/stackId: raptor.marketplace
+        application.tess.io/sidecars-stackId: '{ "dummy-app-2": "nodejs.marketplace"}'
+        proxy.istio.io/config: '{ "proxyMetadata": {"INJECT_AUTO_CERT": "true"}}'
     spec:
       containers:
         - name: dummy-app-1

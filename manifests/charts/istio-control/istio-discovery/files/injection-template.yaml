@@ -198,10 +198,8 @@ spec:
     volumeMounts:
     - name: build-cacerts
       mountPath: /build/bundled-cacerts
-    - name: istio-auto-ca-openjre-cert
-      mountPath: /usr/local/share/istio-auto-ca-certificates/openjre
-    - name: istio-auto-ca-nodejs-cert
-      mountPath: /usr/local/share/istio-auto-ca-certificates/nodejs
+    - name: istio-auto-ca-root-cert
+      mountPath: /usr/local/share/istio-auto-ca-root-cert
     - name: istio-auto-ca
       mountPath: /usr/local/share/istio-auto-ca
   {{- end }}
@@ -458,8 +456,10 @@ spec:
       {{ toYaml $value | indent 6 }}
       {{ end }}
       {{- end }}
+    {{- if .Values.global.proxy.logRotation.enable }}
     - name: {{ annotation .ObjectMeta `sidecar.istio.io/accesslogVolumeName` "proxy-accesslogs" }}
       mountPath: /var/log/proxy
+    {{- end }}
     {{- if eq .Values.global.proxy.tapAgentEnabled true }}
     - name: tap-agent-config
       mountPath: /etc/tap-agent
@@ -574,9 +574,11 @@ spec:
       optional: true
       secretName: lightstep.cacert
   {{- end }}
+  {{- if .Values.global.proxy.logRotation.enable }}
   {{- if not (isset .ObjectMeta.Annotations `sidecar.istio.io/accesslogVolumeName`) }}
   - name: proxy-accesslogs
     emptyDir: {}
+  {{- end }}
   {{- end }}
   {{- if .Values.global.imagePullSecrets }}
   imagePullSecrets:

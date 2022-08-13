@@ -390,7 +390,7 @@ global:
     tapAgentEnabled: false
 
     logRotation:
-      enable: true
+      enable: false
       image: hub.tess.io/istio/proxy-logrotater:0.0.4
               
     # Istio auto cert for terminating HTTPS on sidecar egress listener

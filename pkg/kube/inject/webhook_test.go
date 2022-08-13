@@ -1212,10 +1212,6 @@ func defaultInstallPackageDir() string {
 	return filepath.Join(wd, "../../../manifests/")
 }
 
-func setDefaultPostProcessPod() {
-
-}
-
 func getContainersIndex(appContainerName string, sidecars int) map[string]int {
 	var i int
 	m := map[string]int{
@@ -1235,11 +1231,7 @@ func getContainersIndex(appContainerName string, sidecars int) map[string]int {
 
 func TestPostProcessPod(t *testing.T) {
 	const (
-		appStackIdAnnotationKey      = "application.tess.io/stackId"
-		sidecarsStackIdAnnotationKey = "application.tess.io/sidecars-stackId"
-		appContainerNameAnnotation   = "application.tess.io/app-container-name"
-		pcDefaultAnnotations         = `{
-			"concurrency": 20,
+		pcDefaultAnnotations = `{
 			"proxyMetadata": {
 				"INJECT_AUTO_CERT": "true"
 			}
@@ -1250,11 +1242,7 @@ func TestPostProcessPod(t *testing.T) {
 		specErr, annotationErr, volumeErr error
 		defaultAutoCAVolumes              = []corev1.Volume{
 			{
-				Name:         sharedRaptorJRECACertsVolumeName,
-				VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
-			},
-			{
-				Name:         sharedNodeJSCACertsVolumeName,
+				Name:         sharedCARootCertVolumeName,
 				VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
 			},
 			{
@@ -1291,10 +1279,10 @@ func TestPostProcessPod(t *testing.T) {
 			sidecarsStackIdAnnotations: `{"sidecar1": "raptorservice.marketplace"}`,
 			numOfSidecars:              1,
 			pcAnnotations:              pcDefaultAnnotations,
-			appVolumeMountName:         sharedRaptorJRECACertsVolumeName,
-			appVolumeMountPath:         sharedRaptorJRElibVolumeMountPath,
-			sidecarVolumeMountName:     sharedRaptorJRECACertsVolumeName,
-			sidecarVolumeMountPath:     sharedRaptorJRElibVolumeMountPath,
+			appVolumeMountName:         sharedCARootCertVolumeName,
+			appVolumeMountPath:         sharedRaptorCertVolumeMountPath,
+			sidecarVolumeMountName:     sharedCARootCertVolumeName,
+			sidecarVolumeMountPath:     sharedRaptorCertVolumeMountPath,
 
 			volumes:                        defaultAutoCAVolumes,
 			shouldAppendAppVolumeMount:     true,
@@ -1309,10 +1297,10 @@ func TestPostProcessPod(t *testing.T) {
 			sidecarsStackIdAnnotations:     `{"sidecar1": "raptorservice.marketplace"}`,
 			numOfSidecars:                  1,
 			pcAnnotations:                  pcDefaultAnnotations,
-			appVolumeMountName:             sharedNodeJSCACertsVolumeName,
+			appVolumeMountName:             sharedCARootCertVolumeName,
 			appVolumeMountPath:             sharedAppCACertsVolumeMountPath,
-			sidecarVolumeMountName:         sharedRaptorJRECACertsVolumeName,
-			sidecarVolumeMountPath:         sharedRaptorJRElibVolumeMountPath,
+			sidecarVolumeMountName:         sharedCARootCertVolumeName,
+			sidecarVolumeMountPath:         sharedRaptorCertVolumeMountPath,
 			volumes:                        defaultAutoCAVolumes,
 			shouldAppendAppVolumeMount:     true,
 			shouldAppendSidecarVolumeMount: true,
@@ -1326,10 +1314,10 @@ func TestPostProcessPod(t *testing.T) {
 			stackIdAnnotations:         "raptorservice.marketplace",
 			sidecarsStackIdAnnotations: `{}`,
 			pcAnnotations:              pcDefaultAnnotations,
-			appVolumeMountName:         sharedRaptorJRECACertsVolumeName,
-			appVolumeMountPath:         sharedRaptorJRElibVolumeMountPath,
-			sidecarVolumeMountName:     sharedRaptorJRECACertsVolumeName,
-			sidecarVolumeMountPath:     sharedRaptorJRElibVolumeMountPath,
+			appVolumeMountName:         sharedCARootCertVolumeName,
+			appVolumeMountPath:         sharedRaptorCertVolumeMountPath,
+			sidecarVolumeMountName:     sharedCARootCertVolumeName,
+			sidecarVolumeMountPath:     sharedRaptorCertVolumeMountPath,
 
 			volumes:                        defaultAutoCAVolumes,
 			shouldAppendAppVolumeMount:     true,
@@ -1344,10 +1332,10 @@ func TestPostProcessPod(t *testing.T) {
 			sidecarsStackIdAnnotations: `{"sidecar1": "raptorservice.marketplace", "sidecar2": "raptorservice.marketplace"}`,
 			numOfSidecars:              2,
 			pcAnnotations:              pcDefaultAnnotations,
-			appVolumeMountName:         sharedRaptorJRECACertsVolumeName,
-			appVolumeMountPath:         sharedRaptorJRElibVolumeMountPath,
-			sidecarVolumeMountName:     sharedRaptorJRECACertsVolumeName,
-			sidecarVolumeMountPath:     sharedRaptorJRElibVolumeMountPath,
+			appVolumeMountName:         sharedCARootCertVolumeName,
+			appVolumeMountPath:         sharedRaptorCertVolumeMountPath,
+			sidecarVolumeMountName:     sharedCARootCertVolumeName,
+			sidecarVolumeMountPath:     sharedRaptorCertVolumeMountPath,
 
 			volumes:                        defaultAutoCAVolumes,
 			shouldAppendAppVolumeMount:     true,
@@ -1359,7 +1347,6 @@ func TestPostProcessPod(t *testing.T) {
 			name:             "valid disabled auto cacerts injection",
 			appContainerName: "app",
 			pcAnnotations: `{
-			"concurrency": 20,
 			"proxyMetadata": {
 				"INJECT_AUTO_CERT": "false"
 			}
@@ -1376,8 +1363,8 @@ func TestPostProcessPod(t *testing.T) {
 			stackIdAnnotations:             "raptorservice.marketplace",
 			sidecarsStackIdAnnotations:     `{}`,
 			pcAnnotations:                  pcDefaultAnnotations,
-			appVolumeMountName:             sharedRaptorJRECACertsVolumeName,
-			appVolumeMountPath:             sharedRaptorJRElibVolumeMountPath,
+			appVolumeMountName:             sharedCARootCertVolumeName,
+			appVolumeMountPath:             sharedRaptorCertVolumeMountPath,
 			volumes:                        defaultAutoCAVolumes,
 			shouldAppendAppVolumeMount:     true,
 			shouldAppendSidecarVolumeMount: false,
@@ -1418,7 +1405,7 @@ func TestPostProcessPod(t *testing.T) {
 			shouldAppendAppVolumeMount:   false,
 			shouldAppendProxyVolumeMount: false,
 			isValid:                      false,
-			errMsg:                       `could not find matching application stackId 'invalid.stackId'`,
+			errMsg:                       `Fail to inject Istio auto CA root cert to container 'app', unknown stackId 'invalid.stackId'`,
 		},
 		{
 			name:                       "missing nodejs application root ca volume",
@@ -1427,13 +1414,13 @@ func TestPostProcessPod(t *testing.T) {
 			sidecarsStackIdAnnotations: `{"sidecar1": "raptorservice.marketplace"}`,
 			numOfSidecars:              1,
 			pcAnnotations:              pcDefaultAnnotations,
-			appVolumeMountName:         sharedNodeJSCACertsVolumeName,
+			appVolumeMountName:         sharedCARootCertVolumeName,
 			appVolumeMountPath:         sharedAppCACertsVolumeMountPath,
-			sidecarVolumeMountName:     sharedRaptorJRECACertsVolumeName,
-			sidecarVolumeMountPath:     sharedRaptorJRElibVolumeMountPath,
+			sidecarVolumeMountName:     sharedCARootCertVolumeName,
+			sidecarVolumeMountPath:     sharedRaptorCertVolumeMountPath,
 			volumes: []corev1.Volume{
 				{
-					Name:         sharedRaptorJRECACertsVolumeName,
+					Name:         sharedCARootCertVolumeName,
 					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
 				},
 				{
@@ -1457,8 +1444,8 @@ func TestPostProcessPod(t *testing.T) {
 				Annotations: map[string]string{
 					annotation.SidecarInject.Name: "true",
 					annotation.ProxyConfig.Name:   tc.pcAnnotations,
-					appStackIdAnnotationKey:       tc.stackIdAnnotations,
-					sidecarsStackIdAnnotationKey:  tc.sidecarsStackIdAnnotations,
+					appStackIdAnnotation:          tc.stackIdAnnotations,
+					sidecarsStackIdAnnotation:     tc.sidecarsStackIdAnnotations,
 				},
 			},
 		}
@@ -1536,9 +1523,15 @@ func TestPostProcessPod(t *testing.T) {
 		m := mesh.DefaultMeshConfig()
 
 		t.Run(tc.name, func(t *testing.T) {
-			err := postProcessPod(actual, corev1.Pod{}, InjectionParameters{pod: pod, meshConfig: &m, injectedAnnotations: map[string]string{
-				annotation.ProxyConfig.Name: tc.pcAnnotations,
-			}})
+			injectParam := InjectionParameters{
+				pod:        pod,
+				meshConfig: &m,
+				injectedAnnotations: map[string]string{
+					annotation.ProxyConfig.Name: tc.pcAnnotations,
+				},
+			}
+
+			err := postProcessPod(actual, corev1.Pod{}, injectParam)
 
 			if !reflect.DeepEqual(tc.want.ObjectMeta.Annotations[annotation.ProxyConfig.Name], actual.ObjectMeta.Annotations[annotation.ProxyConfig.Name]) {
 				annotationErr = fmt.Errorf("annotations: Expected result %#v, but got %#v", tc.want.ObjectMeta.Annotations[annotation.ProxyConfig.Name], actual.ObjectMeta.Annotations[annotation.ProxyConfig.Name])

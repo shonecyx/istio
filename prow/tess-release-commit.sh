@@ -51,7 +51,7 @@ function unit_test() {
   make depend
   # Fire the test
   # disabled tests: mixer galley security
-  go test -race -v ./pilot/... ./istioctl/...
+  go test -race -v ./pilot/... ./istioctl/... ./pkg/kube/...
   EXIT_CODE=$?
 }
 

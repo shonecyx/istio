@@ -13,19 +13,23 @@ import (
 )
 
 var (
-	sharedRaptorJRECACertsVolumeName  = "istio-auto-ca-openjre-cert"
-	sharedNodeJSCACertsVolumeName     = "istio-auto-ca-nodejs-cert"
-	sharedCAKeyVolumeName             = "istio-auto-ca"
-	sharedAppCACertsVolumeMountPath   = "/usr/local/share/istio-auto-ca-certificates"
-	sharedProxyCAVolumeMountPath      = "/usr/local/share/istio-auto-ca"
-	sharedRaptorJRElibVolumeMountPath = "/ebay/app/jre/lib/security"
-	autoRootCAPath                    = "AUTO_ROOT_CA_PATH"
-	autoCACertProxyMetadataKey        = "INJECT_AUTO_CERT"
-	appContainerNameProxyMetadataKey  = "APP_CONTAINER_NAME"
-	javaAppFW                         = "JAVA_FW"
-	nodeJSAppFW                       = "NODEJS_FW"
-	nodeJSExtraCACerts                = "NODE_EXTRA_CA_CERTS"
-	nodeJSExtraCACertsFile            = "istio-auto-root-ca-cert.pem"
+	sharedCAKeyVolumeName      = "istio-auto-ca"
+	sharedCARootCertVolumeName = "istio-auto-ca-root-cert"
+
+	// include auto CA root cert and key, sds-agent uses them to sign server cert/key
+	sharedProxyCAVolumeMountPath = "/usr/local/share/istio-auto-ca"
+	// only include auto CA root cert, raptor loads certs from this location
+	sharedRaptorCertVolumeMountPath = "/ebay/config/cacerts"
+	// only include auto CA root cert
+	sharedAppCACertsVolumeMountPath = "/usr/local/share/istio-auto-ca-certificates"
+
+	autoRootCAPath             = "AUTO_ROOT_CA_PATH"
+	autoCACertProxyMetadataKey = "INJECT_AUTO_CERT"
+
+	javaAppFW              = "JAVA_FW"
+	nodeJSAppFW            = "NODEJS_FW"
+	nodeJSExtraCACerts     = "NODE_EXTRA_CA_CERTS"
+	nodeJSExtraCACertsFile = "istio-auto-root-ca-cert.pem"
 
 	// framework application's stack id, its value follow below rules:
 	// - node.js applications' stack id are begin with `nodejs`
@@ -58,86 +62,150 @@ func getProxyConfig(mc *meshconfig.MeshConfig, metadata *metav1.ObjectMeta) (*me
 	return meshConfig, nil
 }
 
-func handleContainersSpecAutoCertInjection(pod *corev1.Pod, appContainersStackId map[string]string, podProxyMetadata map[string]string) bool {
+// append a Volume to Volume list if it's not found. This is for ensure idempotency
+func appendVolume(volumes []corev1.Volume, vol corev1.Volume) []corev1.Volume {
+	found := false
 
-	var matched bool
-	// Append shared-cacerts volumeMount per each pods containers
+	for _, v := range volumes {
+		if v.Name == vol.Name {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		volumes = append(volumes, vol)
+	}
+
+	return volumes
+}
+
+// append a VolumeMount to VolumeMount list if it's not found. This is for ensure idempotency
+func appendVolumeMount(volumeMounts []corev1.VolumeMount, vm corev1.VolumeMount) []corev1.VolumeMount {
+	found := false
+
+	for _, v := range volumeMounts {
+		if v.Name == vm.Name {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		volumeMounts = append(volumeMounts, vm)
+	}
+
+	return volumeMounts
+}
+
+// append a EnvVar to EnvVar list if it's not found. This is for ensure idempotency
+func appendEnvVar(EnvVars []corev1.EnvVar, ev corev1.EnvVar) []corev1.EnvVar {
+	found := false
+
+	for _, v := range EnvVars {
+		if v.Name == ev.Name {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		EnvVars = append(EnvVars, ev)
+	}
+
+	return EnvVars
+}
+
+// append volumes to containers for accessing Istio auto CA root cert/key
+func handleContainersSpecAutoCertInjection(pod *corev1.Pod, appContainersStackId map[string]string, podProxyMetadata map[string]string) error {
+
 	for i, c := range pod.Spec.Containers {
 		if c.Name == "istio-proxy" {
 			env := corev1.EnvVar{
 				Name:  autoRootCAPath,
 				Value: sharedProxyCAVolumeMountPath,
 			}
-			c.Env = append(c.Env, env)
+			c.Env = appendEnvVar(c.Env, env)
 
 			vm := corev1.VolumeMount{
 				Name:      sharedCAKeyVolumeName,
 				MountPath: sharedProxyCAVolumeMountPath,
 				ReadOnly:  true,
 			}
-			c.VolumeMounts = append(c.VolumeMounts, vm)
+			c.VolumeMounts = appendVolumeMount(c.VolumeMounts, vm)
 			pod.Spec.Containers[i] = c
 		}
+	}
 
-		if stackId, ok := appContainersStackId[c.Name]; ok {
-			if strings.Contains(stackId, "raptor") {
-				matched = true
+	for name, stackId := range appContainersStackId {
+		if err := mountAutoCARootCertToContainer(pod, name, stackId); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func mountAutoCARootCertToContainer(pod *corev1.Pod, name, stackId string) error {
+
+	for i, c := range pod.Spec.Containers {
+		if c.Name == name {
+			if strings.HasPrefix(stackId, "raptor") {
+
 				// For Raptor Java application, override original root CA trust store
 				vm := corev1.VolumeMount{
-					Name:      sharedRaptorJRECACertsVolumeName,
-					MountPath: sharedRaptorJRElibVolumeMountPath,
+					Name:      sharedCARootCertVolumeName,
+					MountPath: sharedRaptorCertVolumeMountPath,
 					ReadOnly:  true,
 				}
-				c.VolumeMounts = append(c.VolumeMounts, vm)
-			}
-			if strings.Contains(stackId, "nodejs") {
-				matched = true
+				c.VolumeMounts = appendVolumeMount(c.VolumeMounts, vm)
+			} else if strings.HasPrefix(stackId, "nodejs") {
+
 				vm := corev1.VolumeMount{
-					Name:      sharedNodeJSCACertsVolumeName,
+					Name:      sharedCARootCertVolumeName,
 					MountPath: sharedAppCACertsVolumeMountPath,
 					ReadOnly:  true,
 				}
-				c.VolumeMounts = append(c.VolumeMounts, vm)
+				c.VolumeMounts = appendVolumeMount(c.VolumeMounts, vm)
 
 				// in case of NodeJS FW, add extra CA certs environment variable
 				env := corev1.EnvVar{
 					Name:  nodeJSExtraCACerts,
 					Value: sharedAppCACertsVolumeMountPath + "/" + nodeJSExtraCACertsFile,
 				}
-				c.Env = append(c.Env, env)
+				c.Env = appendEnvVar(c.Env, env)
+			} else {
+				// TODO: support generic workload which using openssl
+				return fmt.Errorf("Fail to inject Istio auto CA root cert to container '%s', unknown stackId '%s'",
+					name, stackId)
 			}
+
 			pod.Spec.Containers[i] = c
+
+			return nil
 		}
 	}
 
-	return matched
+	return fmt.Errorf("Fail to inject Istio auto CA root cert, container '%s' not found", name)
 }
 
 func handlePodVolumesSpecAutoCertInjection(pod *corev1.Pod, appContainersStackId map[string]string) {
 
-	// volume for importing cert to JKS in openJRE for raptor application
-	caCertsVol := corev1.Volume{
-		Name:         sharedRaptorJRECACertsVolumeName,
-		VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
-	}
-	pod.Spec.Volumes = append(pod.Spec.Volumes, caCertsVol)
-
 	// volume for storing root cert
-	caCertsVol = corev1.Volume{
-		Name:         sharedNodeJSCACertsVolumeName,
+	caRootCertVol := corev1.Volume{
+		Name:         sharedCARootCertVolumeName,
 		VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
 	}
-	pod.Spec.Volumes = append(pod.Spec.Volumes, caCertsVol)
+	pod.Spec.Volumes = appendVolume(pod.Spec.Volumes, caRootCertVol)
 
 	// volume for storing istio auto root CA cert and key, which will be used by SDS agent in istio-proxy
 	// to sign cert/key for egress service
-	caKeyVol := corev1.Volume{
+	caVol := corev1.Volume{
 		Name:         sharedCAKeyVolumeName,
 		VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
 	}
-	pod.Spec.Volumes = append(pod.Spec.Volumes, caKeyVol)
+	pod.Spec.Volumes = appendVolume(pod.Spec.Volumes, caVol)
 
-	return
 }
 
 func customPostProcess(pod *corev1.Pod, req InjectionParameters) error {
@@ -163,20 +231,27 @@ func customPostProcess(pod *corev1.Pod, req InjectionParameters) error {
 			if b, ok := req.pod.ObjectMeta.GetAnnotations()[sidecarsStackIdAnnotation]; ok {
 				err := json.Unmarshal([]byte(b), &appContainersStackId)
 				if err != nil {
-					return err
+					return fmt.Errorf("annotation '%s' has invalid value '%s', error: %v", sidecarsStackIdAnnotation, b, err)
 				}
 			}
+
 			if appStack, ok := req.pod.ObjectMeta.GetAnnotations()[appStackIdAnnotation]; ok {
 				//TODO: make generic
 				if appCustomName, ok := req.pod.ObjectMeta.GetAnnotations()[appContainerNameAnnotation]; ok {
 					appContainerName = appCustomName
 				}
 				appContainersStackId[appContainerName] = appStack
+			}
 
+			if len(appContainersStackId) == 0 {
+				return fmt.Errorf("Istio auto CA injection is enabled, but missing annotations: %s and/or %s",
+					appStackIdAnnotation, sidecarsStackIdAnnotation)
 			}
-			if ok := handleContainersSpecAutoCertInjection(pod, appContainersStackId, pcm); !ok {
-				return fmt.Errorf("could not find matching application stackId '%s'", appContainersStackId[appContainerName])
+
+			if err := handleContainersSpecAutoCertInjection(pod, appContainersStackId, pcm); err != nil {
+				return err
 			}
+
 			// Append two emptyDir{} volumes:
 			// 1. istio-auto-ca-cert: istio-auto-cacert, initContainer, will store generated root CA cert
 			// 2. istio-auto-ca-key: istio-auto-cacert, initContainer, will store generated root CA key

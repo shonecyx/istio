@@ -12,13 +12,15 @@ spec:
   template:
     metadata:
       annotations:
+        application.tess.io/app-container-name: dummy-app-1
+        application.tess.io/sidecars-stackId: '{ "dummy-app-2": "nodejs.marketplace"}'
+        application.tess.io/stackId: raptor.marketplace
         prometheus.io/path: /stats/prometheus
         prometheus.io/port: "15020"
         prometheus.io/scrape: "true"
-        proxy.istio.io/config: "concurrency: 10\nproxyMetadata: \n  INJECT_AUTO_CERT:
-          JAVA_FW\n  APP_CONTAINER_NAME: dummy-app-1"
+        proxy.istio.io/config: '{ "proxyMetadata": {"INJECT_AUTO_CERT": "true"}}'
         sidecar.istio.io/interceptionMode: REDIRECT
-        sidecar.istio.io/status: '{"initContainers":["istio-validation","cacerts-generator"],"containers":["istio-proxy","logrotater"],"volumes":["istio-envoy","istio-data","istio-podinfo","istio-token","istiod-ca-cert","proxy-accesslogs"],"imagePullSecrets":null}'
+        sidecar.istio.io/status: '{"initContainers":["istio-validation","istio-auto-cacert"],"containers":["istio-proxy"],"volumes":["build-cacerts","istio-envoy","istio-data","istio-podinfo","istio-token","istiod-ca-cert"],"imagePullSecrets":null}'
         traffic.sidecar.istio.io/excludeInboundPorts: "15020"
         traffic.sidecar.istio.io/includeInboundPorts: '*'
         traffic.sidecar.istio.io/includeOutboundIPRanges: '*'
@@ -32,23 +34,6 @@ spec:
         topology.istio.io/network: network1
     spec:
       containers:
-      - image: hub.tess.io/istio/proxy-logrotater:0.0.1
-        imagePullPolicy: Always
-        name: logrotater
-        resources:
-          limits:
-            cpu: 20m
-            memory: 128Mi
-          requests:
-            cpu: 10m
-            memory: 10Mi
-        securityContext:
-          runAsGroup: 1337
-          runAsNonRoot: true
-          runAsUser: 1337
-        volumeMounts:
-        - mountPath: /var/log/proxy
-          name: proxy-accesslogs
       - image: fake.docker.io/google-samples/hello-go-gke:1.0
         name: dummy-app-1
         ports:
@@ -56,14 +41,22 @@ spec:
           name: http
         resources: {}
         volumeMounts:
-        - mountPath: /usr/local/share/istio-auto-ca-certificates
-          name: istio-auto-ca-cert
-      - image: fake.docker.io/google-samples/hello-go-gke:1.0
+        - mountPath: /ebay/config/cacerts
+          name: istio-auto-ca-root-cert
+          readOnly: true
+      - env:
+        - name: NODE_EXTRA_CA_CERTS
+          value: /usr/local/share/istio-auto-ca-certificates/istio-auto-root-ca-cert.pem
+        image: fake.docker.io/google-samples/hello-go-gke:1.0
         name: dummy-app-2
         ports:
         - containerPort: 90
           name: http
         resources: {}
+        volumeMounts:
+        - mountPath: /usr/local/share/istio-auto-ca-certificates
+          name: istio-auto-ca-root-cert
+          readOnly: true
       - args:
         - proxy
         - sidecar
@@ -75,7 +68,7 @@ spec:
         - --proxyComponentLogLevel=misc:error
         - --log_output_level=default:info
         - --concurrency
-        - "10"
+        - "2"
         env:
         - name: JWT_POLICY
           value: third-party-jwt
@@ -113,7 +106,7 @@ spec:
               fieldPath: metadata.labels['service.istio.io/canonical-revision']
         - name: PROXY_CONFIG
           value: |
-            {"concurrency":10,"proxyMetadata":{"APP_CONTAINER_NAME":"dummy-app-1","INJECT_AUTO_CERT":"JAVA_FW"}}
+            {"proxyMetadata":{"INJECT_AUTO_CERT":"true"}}
         - name: ISTIO_META_POD_PORTS
           value: |-
             [
@@ -128,7 +121,7 @@ spec:
           value: REDIRECT
         - name: ISTIO_METAJSON_ANNOTATIONS
           value: |
-            {"proxy.istio.io/config":"concurrency: 10\nproxyMetadata: \n  INJECT_AUTO_CERT: JAVA_FW\n  APP_CONTAINER_NAME: dummy-app-1"}
+            {"application.tess.io/app-container-name":"dummy-app-1","application.tess.io/sidecars-stackId":"{ \"dummy-app-2\": \"nodejs.marketplace\"}","application.tess.io/stackId":"raptor.marketplace","proxy.istio.io/config":"{ \"proxyMetadata\": {\"INJECT_AUTO_CERT\": \"true\"}}"}
         - name: ISTIO_META_WORKLOAD_NAME
           value: auto-cacerts-injection
         - name: ISTIO_META_OWNER
@@ -137,10 +130,10 @@ spec:
           value: cluster.local
         - name: TRUST_DOMAIN
           value: cluster.local
-        - name: APP_CONTAINER_NAME
-          value: dummy-app-1
         - name: INJECT_AUTO_CERT
-          value: JAVA_FW
+          value: "true"
+        - name: AUTO_ROOT_CA_PATH
+          value: /usr/local/share/istio-auto-ca
         - name: ISTIO_META_NETWORK
           value: network1
         image: gcr.io/istio-testing/proxyv2:latest
@@ -185,10 +178,9 @@ spec:
           name: istio-token
         - mountPath: /etc/istio/pod
           name: istio-podinfo
-        - mountPath: /var/log/proxy
-          name: proxy-accesslogs
         - mountPath: /usr/local/share/istio-auto-ca
           name: istio-auto-ca
+          readOnly: true
       initContainers:
       - args:
         - istio-iptables
@@ -211,10 +203,8 @@ spec:
         - --run-validation
         - --skip-rule-apply
         env:
-        - name: APP_CONTAINER_NAME
-          value: dummy-app-1
         - name: INJECT_AUTO_CERT
-          value: JAVA_FW
+          value: "true"
         image: gcr.io/istio-testing/proxyv2:latest
         name: istio-validation
         resources:
@@ -234,9 +224,36 @@ spec:
           runAsGroup: 1337
           runAsNonRoot: true
           runAsUser: 1337
+      - args:
+        - -c
+        - /build/import-auto-root-ca.sh
+        command:
+        - /bin/sh
+        imagePullPolicy: IfNotPresent
+        name: istio-auto-cacert
+        resources:
+          limits:
+            cpu: 200m
+            memory: 128Mi
+          requests:
+            cpu: 200m
+            memory: 128Mi
+        securityContext:
+          runAsGroup: 1337
+          runAsNonRoot: true
+          runAsUser: 1337
+        volumeMounts:
+        - mountPath: /build/bundled-cacerts
+          name: build-cacerts
+        - mountPath: /usr/local/share/istio-auto-ca-root-cert
+          name: istio-auto-ca-root-cert
+        - mountPath: /usr/local/share/istio-auto-ca
+          name: istio-auto-ca
       securityContext:
-        fsGroup: 1337            
+        fsGroup: 1337
       volumes:
+      - emptyDir: {}
+        name: build-cacerts
       - emptyDir:
           medium: Memory
         name: istio-envoy
@@ -272,9 +289,8 @@ spec:
           name: istio-ca-root-cert
         name: istiod-ca-cert
       - emptyDir: {}
-        name: proxy-accesslogs
-      - emptyDir: {}
-        name: istio-auto-ca-cert
+        name: istio-auto-ca-root-cert
       - emptyDir: {}
         name: istio-auto-ca
 status: {}
+---
