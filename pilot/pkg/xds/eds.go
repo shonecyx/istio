@@ -16,6 +16,8 @@ package xds
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	endpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	discovery "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
@@ -33,6 +35,15 @@ import (
 	"istio.io/istio/pkg/config/labels"
 	"istio.io/istio/pkg/config/protocol"
 	"istio.io/istio/pkg/config/schema/gvk"
+)
+
+const (
+	// failover service service name, same definition as VirtualService destination host.
+	FailoverServiceAnnotation = "traffic.istio.io/failoverService"
+	// failover service endpoint port
+	FailoverServicePortAnnotation = "traffic.istio.io/failoverServicePort"
+	// default math.MaxUint32, definition https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/overprovisioning
+	FailoverServiceOverProvisioningFactorAnnotation = "traffic.istio.io/failoverServiceOverProvisioningFactor"
 )
 
 // UpdateServiceShards will list the endpoints and create the shards.
@@ -252,11 +263,44 @@ func (s *DiscoveryServer) deleteService(cluster, serviceName, namespace string) 
 // llbEndpointAndOptionsForCluster return the endpoints for a cluster
 // Initial implementation is computing the endpoints on the flight - caching will be added as needed, based on
 // perf tests.
-func (s *DiscoveryServer) llbEndpointAndOptionsForCluster(b EndpointBuilder) ([]*LocLbEndpointsAndOptions, error) {
+func (s *DiscoveryServer) llbEndpointAndOptionsForCluster(b EndpointBuilder) ([]*LocLbEndpointsAndOptions, bool, uint32, error) {
+	isFailover := false
 	if b.service == nil {
 		// Shouldn't happen here
 		log.Debugf("can not find the service for cluster %s", b.clusterName)
-		return make([]*LocLbEndpointsAndOptions, 0), nil
+		return make([]*LocLbEndpointsAndOptions, 0), false, 0, nil
+	}
+	destRule := b.destinationRule
+	var failoverServiceName string
+	var failOverPort uint32
+	var overProvisioningFactor uint32
+	var failoverSvcNs = b.service.Attributes.Namespace
+	var epShardsFailover *EndpointShards
+	if destRule != nil {
+		if failoverServiceInAnnotation, ok := destRule.Annotations[FailoverServiceAnnotation]; ok {
+			fqdn := string(model.ResolveShortnameToFQDN(failoverServiceInAnnotation, destRule.Meta))
+			failoverServiceName = fqdn
+		}
+		if failoverPortInAnnotation, ok := destRule.Annotations[FailoverServicePortAnnotation]; ok {
+			port, err := strconv.Atoi(failoverPortInAnnotation)
+			if err == nil {
+				failOverPort = uint32(port)
+			}
+		}
+		if failoverPortInAnnotation, ok := destRule.Annotations[FailoverServiceOverProvisioningFactorAnnotation]; ok {
+			factor, err := strconv.Atoi(failoverPortInAnnotation)
+			if err == nil {
+				overProvisioningFactor = uint32(factor)
+			}
+		}
+	}
+	if strings.Contains(failoverServiceName, ".") {
+		failoverSvcNs = strings.Split(failoverServiceName, ".")[1]
+	}
+	var f1, f2 bool
+	if failoverServiceName != "" {
+		isFailover = true
+		epShardsFailover, f2 = s.EndpointShardsByService[failoverServiceName][failoverSvcNs]
 	}
 
 	// Service resolution type might have changed and Cluster may be still in the EDS cluster list of "Connection.Clusters".
@@ -268,30 +312,31 @@ func (s *DiscoveryServer) llbEndpointAndOptionsForCluster(b EndpointBuilder) ([]
 	// Gateways use EDS for Passthrough cluster. So we should allow Passthrough here.
 	if b.service.Resolution == model.DNSLB {
 		log.Infof("cluster %s in eds cluster, but its resolution now is updated to %v, skipping it.", b.clusterName, b.service.Resolution)
-		return nil, fmt.Errorf("cluster %s in eds cluster", b.clusterName)
+		return nil, isFailover, overProvisioningFactor, fmt.Errorf("cluster %s in eds cluster", b.clusterName)
 	}
 
 	svcPort, f := b.service.Ports.GetByPort(b.port)
 	if !f {
 		// Shouldn't happen here
 		log.Debugf("can not find the service port %d for cluster %s", b.port, b.clusterName)
-		return make([]*LocLbEndpointsAndOptions, 0), nil
+		return make([]*LocLbEndpointsAndOptions, 0), isFailover, overProvisioningFactor, nil
 	}
 
 	s.mutex.RLock()
-	epShards, f := s.EndpointShardsByService[string(b.hostname)][b.service.Attributes.Namespace]
+
+	epShards, f1 := s.EndpointShardsByService[string(b.hostname)][b.service.Attributes.Namespace]
 	s.mutex.RUnlock()
-	if !f {
+	if !f1 && !f2 {
 		// Shouldn't happen here
 		log.Debugf("can not find the endpointShards for cluster %s", b.clusterName)
-		return make([]*LocLbEndpointsAndOptions, 0), nil
+		return make([]*LocLbEndpointsAndOptions, 0), isFailover, overProvisioningFactor, nil
 	}
-
-	return b.buildLocalityLbEndpointsFromShards(epShards, svcPort), nil
+	return b.buildLocalityLbEndpointsFromShards(epShards, epShardsFailover, svcPort, failOverPort), isFailover, overProvisioningFactor, nil
 }
 
 func (s *DiscoveryServer) generateEndpoints(b EndpointBuilder) *endpoint.ClusterLoadAssignment {
-	llbOpts, err := s.llbEndpointAndOptionsForCluster(b)
+	llbOpts, isFailover, overProvisioningFactor, err := s.llbEndpointAndOptionsForCluster(b)
+
 	if err != nil {
 		return buildEmptyClusterLoadAssignment(b.clusterName)
 	}
@@ -310,8 +355,7 @@ func (s *DiscoveryServer) generateEndpoints(b EndpointBuilder) *endpoint.Cluster
 	}
 	llbOpts = b.ApplyTunnelSetting(llbOpts, b.tunnelType)
 
-	l := b.createClusterLoadAssignment(llbOpts)
-
+	l := b.createClusterLoadAssignment(llbOpts, isFailover, overProvisioningFactor)
 	// If locality aware routing is enabled, prioritize endpoints or set their lb weight.
 	// Failover should only be enabled when there is an outlier detection, otherwise Envoy
 	// will never detect the hosts are unhealthy and redirect traffic.
@@ -369,8 +413,30 @@ func (eds *EdsGenerator) Generate(proxy *model.Proxy, push *model.PushContext, w
 
 	cached := 0
 	regenerated := 0
+
+	// build the map for the clusters with failover service since failover service change should also trigger
+	// the original cluster reconcile
+	var clusterWithFailoverServiceMap = make(map[string]string)
 	for _, clusterName := range w.ResourceNames {
-		if edsUpdatedServices != nil {
+		builder := NewEndpointBuilder(clusterName, proxy, push)
+		if builder.destinationRule == nil || builder.destinationRule.Annotations == nil {
+			continue
+		}
+		if failoverServiceInAnnotation, ok := builder.destinationRule.Annotations[FailoverServiceAnnotation]; ok {
+			failoverSvcFQDN := string(model.ResolveShortnameToFQDN(failoverServiceInAnnotation, builder.destinationRule.Meta))
+			clusterWithFailoverServiceMap[clusterName] = failoverSvcFQDN
+		} else {
+			delete(clusterWithFailoverServiceMap, clusterName)
+		}
+	}
+
+	for _, clusterName := range w.ResourceNames {
+		// it means the cluster has failover service, will also need reconcile the cluster if there is update in the failover service
+		var withFailoverService bool
+		if _, ok := clusterWithFailoverServiceMap[clusterName]; ok {
+			withFailoverService = true
+		}
+		if edsUpdatedServices != nil && !withFailoverService {
 			_, _, hostname, _ := model.ParseSubsetKey(clusterName)
 			if _, ok := edsUpdatedServices[string(hostname)]; !ok {
 				// Cluster was not updated, skip recomputing. This happens when we get an incremental update for a
@@ -379,7 +445,17 @@ func (eds *EdsGenerator) Generate(proxy *model.Proxy, push *model.PushContext, w
 			}
 		}
 		builder := NewEndpointBuilder(clusterName, proxy, push)
-		if marshalledEndpoint, token, f := eds.Server.Cache.Get(builder); f && !features.EnableUnsafeAssertions {
+
+		var shouldReconcileWithFailoverService bool
+		if failoverService, ok := clusterWithFailoverServiceMap[clusterName]; ok {
+			if edsUpdatedServices != nil {
+				if _, ok := edsUpdatedServices[failoverService]; ok {
+					shouldReconcileWithFailoverService = true
+				}
+			}
+		}
+
+		if marshalledEndpoint, token, f := eds.Server.Cache.Get(builder); f && !features.EnableUnsafeAssertions && !shouldReconcileWithFailoverService {
 			// We skip cache if assertions are enabled, so that the cache will assert our eviction logic is correct
 			resources = append(resources, marshalledEndpoint)
 			cached++
