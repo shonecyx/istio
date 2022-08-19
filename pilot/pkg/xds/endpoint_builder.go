@@ -15,6 +15,7 @@
 package xds
 
 import (
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -34,6 +35,11 @@ import (
 	"istio.io/istio/pkg/config/host"
 	"istio.io/istio/pkg/config/labels"
 	"istio.io/istio/pkg/config/schema/gvk"
+)
+
+const (
+	DefaultLBEndpointsPriority  = uint32(0)
+	FailoverLBEndpointsPriority = uint32(100)
 )
 
 // Return the tunnel type for this endpoint builder. If the endpoint builder builds h2tunnel, the final endpoint
@@ -252,9 +258,55 @@ func (e *LocLbEndpointsAndOptions) AssertInvarianceInTest() {
 // build LocalityLbEndpoints for a cluster from existing EndpointShards.
 func (b *EndpointBuilder) buildLocalityLbEndpointsFromShards(
 	shards *EndpointShards,
+	failoverShards *EndpointShards,
 	svcPort *model.Port,
+	failOverPort uint32,
 ) []*LocLbEndpointsAndOptions {
 	localityEpMap := make(map[string]*LocLbEndpointsAndOptions)
+	locEps := make([]*LocLbEndpointsAndOptions, 0, len(localityEpMap))
+	if shards != nil {
+		locEps = b.generateLocEps(shards, svcPort, 0, locEps, false, DefaultLBEndpointsPriority)
+	}
+
+	// failover case to populate failover endpoints
+	if failoverShards != nil {
+		//failover cluster is P100, default is P0
+		locEps = b.generateLocEps(failoverShards, svcPort, failOverPort, locEps, true, FailoverLBEndpointsPriority)
+	}
+	if len(locEps) == 0 {
+		b.push.AddMetric(model.ProxyStatusClusterNoInstances, b.clusterName, "", "")
+	}
+	return locEps
+}
+
+func (b *EndpointBuilder) generateLocEps(shards *EndpointShards, svcPort *model.Port, failOverPort uint32, locEps []*LocLbEndpointsAndOptions, isFailover bool, priority uint32) []*LocLbEndpointsAndOptions {
+	localityEpMap := make(map[string]*LocLbEndpointsAndOptions)
+	b.genLocalityEpMap(shards, svcPort, localityEpMap, isFailover, failOverPort)
+	locs := make([]string, 0, len(localityEpMap))
+	for k := range localityEpMap {
+		locs = append(locs, k)
+	}
+	if len(locs) >= 2 {
+		sort.Strings(locs)
+	}
+	for _, k := range locs {
+		locLbEps := localityEpMap[k]
+		var weight uint32
+		for _, ep := range locLbEps.llbEndpoints.LbEndpoints {
+			weight += ep.LoadBalancingWeight.GetValue()
+		}
+		locLbEps.llbEndpoints.LoadBalancingWeight = &wrappers.UInt32Value{
+			Value: weight,
+		}
+		if priority != 0 {
+			locLbEps.llbEndpoints.Priority = priority
+		}
+		locEps = append(locEps, locLbEps)
+	}
+	return locEps
+}
+
+func (b *EndpointBuilder) genLocalityEpMap(shards *EndpointShards, svcPort *model.Port, localityEpMap map[string]*LocLbEndpointsAndOptions, isFailover bool, failOverPort uint32) {
 	// get the subset labels
 	epLabels := getSubSetLabels(b.DestinationRule(), b.subsetName)
 
@@ -282,16 +334,19 @@ func (b *EndpointBuilder) buildLocalityLbEndpointsFromShards(
 		if isClusterLocal && (clusterID != b.clusterID) {
 			continue
 		}
-
 		for _, ep := range endpoints {
-			if svcPort.Name != ep.ServicePortName {
+			// for failover service, we can specify the endpoint port with annotation traffic.istio.io/failoverServicePort
+			if isFailover && failOverPort != 0 && (ep.EndpointPort != failOverPort) {
+				continue
+			}
+			// for failover service, the service port name check is skipped
+			if !isFailover && svcPort.Name != ep.ServicePortName {
 				continue
 			}
 			// Port labels
 			if !epLabels.HasSubsetOf(ep.Labels) {
 				continue
 			}
-
 			locLbEps, found := localityEpMap[ep.Locality.Label]
 			if !found {
 				locLbEps = &LocLbEndpointsAndOptions{
@@ -313,35 +368,10 @@ func (b *EndpointBuilder) buildLocalityLbEndpointsFromShards(
 			if b.mtlsChecker != nil {
 				b.mtlsChecker.computeForEndpoint(ep)
 			}
+
 		}
 	}
 	shards.mutex.Unlock()
-
-	locEps := make([]*LocLbEndpointsAndOptions, 0, len(localityEpMap))
-	locs := make([]string, 0, len(localityEpMap))
-	for k := range localityEpMap {
-		locs = append(locs, k)
-	}
-	if len(locs) >= 2 {
-		sort.Strings(locs)
-	}
-	for _, k := range locs {
-		locLbEps := localityEpMap[k]
-		var weight uint32
-		for _, ep := range locLbEps.llbEndpoints.LbEndpoints {
-			weight += ep.LoadBalancingWeight.GetValue()
-		}
-		locLbEps.llbEndpoints.LoadBalancingWeight = &wrappers.UInt32Value{
-			Value: weight,
-		}
-		locEps = append(locEps, locLbEps)
-	}
-
-	if len(locEps) == 0 {
-		b.push.AddMetric(model.ProxyStatusClusterNoInstances, b.clusterName, "", "")
-	}
-
-	return locEps
 }
 
 // TODO(lambdai): Handle ApplyTunnel error return value by filter out the failed endpoint.
@@ -360,15 +390,31 @@ func (b *EndpointBuilder) ApplyTunnelSetting(llbOpts []*LocLbEndpointsAndOptions
 }
 
 // Create the CLusterLoadAssignment. At this moment the options must have been applied to the locality lb endpoints.
-func (b *EndpointBuilder) createClusterLoadAssignment(llbOpts []*LocLbEndpointsAndOptions) *endpoint.ClusterLoadAssignment {
+func (b *EndpointBuilder) createClusterLoadAssignment(llbOpts []*LocLbEndpointsAndOptions, isFailover bool, overProvisioningFactor uint32) *endpoint.ClusterLoadAssignment {
 	llbEndpoints := make([]*endpoint.LocalityLbEndpoints, 0, len(llbOpts))
 	for _, l := range llbOpts {
 		llbEndpoints = append(llbEndpoints, &l.llbEndpoints)
 	}
-	return &endpoint.ClusterLoadAssignment{
-		ClusterName: b.clusterName,
-		Endpoints:   llbEndpoints,
+	if isFailover {
+		if overProvisioningFactor == 0 {
+			overProvisioningFactor = math.MaxUint32
+		}
+		return &endpoint.ClusterLoadAssignment{
+			ClusterName: b.clusterName,
+			Endpoints:   llbEndpoints,
+			Policy: &endpoint.ClusterLoadAssignment_Policy{
+				OverprovisioningFactor: &wrappers.UInt32Value{
+					Value: overProvisioningFactor,
+				},
+			},
+		}
+	} else {
+		return &endpoint.ClusterLoadAssignment{
+			ClusterName: b.clusterName,
+			Endpoints:   llbEndpoints,
+		}
 	}
+
 }
 
 // buildEnvoyLbEndpoint packs the endpoint based on istio info.

@@ -125,6 +125,86 @@ func TestEndpointsByNetworkFilter(t *testing.T) {
 	runNetworkFilterTest(t, env, networkFiltered)
 }
 
+func TestEndpointsByNetworkFilter_WithConfig_WithFailover(t *testing.T) {
+	noCrossNetwork := []networkFilterCase{
+		{
+			name:     "from_network1",
+			conn:     xdsConnection("network1"),
+			failover: true,
+			want: []LocLbEpInfo{
+				{
+					lbEps: []LbEpInfo{
+						// 2 local endpoints
+						{address: "10.0.0.1", weight: 2},
+						{address: "10.0.0.2", weight: 2},
+						// 1 endpoint to gateway of network2 with weight 1 because it has 1 endpoint
+						{address: "2.2.2.2", weight: 1},
+						{address: "2.2.2.20", weight: 1},
+						// network4 has no gateway, which means it can be accessed from network1
+						{address: "40.0.0.1", weight: 2},
+					},
+					weight: 8,
+				}, {
+					lbEps: []LbEpInfo{
+						// failover endpoints
+						{address: "10.1.0.1", weight: 2},
+						{address: "10.1.0.2", weight: 2},
+						{address: "2.2.2.2", weight: 1},
+						{address: "2.2.2.20", weight: 1},
+						{address: "40.1.0.1", weight: 2},
+					},
+					weight: 8,
+				},
+			},
+		},
+	}
+
+	cases := map[string]map[string]struct {
+		Config  config.Config
+		Configs []config.Config
+		Tests   []networkFilterCase
+	}{
+		gvk.DestinationRule.String(): {
+			"failover-cluster-destination-level": {
+				Config: config.Config{
+					Meta: config.Meta{
+						GroupVersionKind: gvk.DestinationRule,
+						Name:             "failover-service-dr",
+						Namespace:        "ns",
+						Annotations:      map[string]string{"traffic.istio.io/failoverService": "homepage.example.org"},
+					},
+					Spec: &networking.DestinationRule{
+						Host: "example.ns.svc.cluster.local",
+					},
+				},
+				Tests: noCrossNetwork,
+			},
+		},
+	}
+
+	for configType, cases := range cases {
+		t.Run(configType, func(t *testing.T) {
+			for name, pa := range cases {
+				t.Run(name, func(t *testing.T) {
+					env := environment()
+					cfgs := pa.Configs
+					if pa.Config.Name != "" {
+						cfgs = append(cfgs, pa.Config)
+					}
+					for _, cfg := range cfgs {
+						_, err := env.IstioConfigStore.Create(cfg)
+						if err != nil {
+							t.Fatalf("failed creating %s: %v", cfg.Name, err)
+						}
+					}
+					env.Init()
+					runNetworkFilterTest(t, env, pa.Tests)
+				})
+			}
+		})
+	}
+}
+
 func TestEndpointsByNetworkFilter_WithConfig(t *testing.T) {
 	noCrossNetwork := []networkFilterCase{
 		{
@@ -564,9 +644,10 @@ func TestEndpointsByNetworkFilter_SkipLBWithHostname(t *testing.T) {
 }
 
 type networkFilterCase struct {
-	name string
-	conn *Connection
-	want []LocLbEpInfo
+	name     string
+	conn     *Connection
+	want     []LocLbEpInfo
+	failover bool
 }
 
 // runNetworkFilterTest calls the endpoints filter from each one of the
@@ -577,7 +658,12 @@ func runNetworkFilterTest(t *testing.T, env *model.Environment, tests []networkF
 			push := model.NewPushContext()
 			_ = push.InitContext(env, nil, nil)
 			b := NewEndpointBuilder("outbound|80||example.ns.svc.cluster.local", tt.conn.proxy, push)
-			testEndpoints := b.buildLocalityLbEndpointsFromShards(testShards(), &model.Port{Name: "http", Port: 80, Protocol: protocol.HTTP})
+			var testEndpoints []*LocLbEndpointsAndOptions
+			if tt.failover {
+				testEndpoints = b.buildLocalityLbEndpointsFromShards(testShards(), testFailoverShards(), &model.Port{Name: "http", Port: 80, Protocol: protocol.HTTP}, 8080)
+			} else {
+				testEndpoints = b.buildLocalityLbEndpointsFromShards(testShards(), nil, &model.Port{Name: "http", Port: 80, Protocol: protocol.HTTP}, 0)
+			}
 			filtered := b.EndpointsByNetworkFilter(testEndpoints)
 			for _, e := range testEndpoints {
 				e.AssertInvarianceInTest()
@@ -713,6 +799,28 @@ func testShards() *EndpointShards {
 		ep.EndpointPort = 8080
 		ep.TLSMode = "istio"
 		ep.Labels = map[string]string{"app": "example"}
+		shards.Shards["cluster-0"][i] = ep
+	}
+	return shards
+}
+
+func testFailoverShards() *EndpointShards {
+	shards := &EndpointShards{Shards: map[string][]*model.IstioEndpoint{
+		"cluster-0": {
+			{Network: "network1", Address: "10.1.0.1"},
+			{Network: "network1", Address: "10.1.0.2"},
+			{Network: "network2", Address: "20.1.0.1"},
+			{Network: "network4", Address: "40.1.0.1"},
+		},
+	}}
+	// apply common properties
+	for i, ep := range shards.Shards["cluster-0"] {
+		ep.ServicePortName = "http-failover"
+		ep.Namespace = "ns"
+		ep.HostName = "homepage.example.org"
+		ep.EndpointPort = 8080
+		ep.TLSMode = "istio"
+		ep.Labels = map[string]string{"app": "homepage"}
 		shards.Shards["cluster-0"][i] = ep
 	}
 	return shards
