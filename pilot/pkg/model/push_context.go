@@ -1190,6 +1190,7 @@ func (ps *PushContext) updateContext(
 		}
 	} else {
 		ps.sidecarIndex.sidecarsByNamespace = oldPushContext.sidecarIndex.sidecarsByNamespace
+		ps.sidecarIndex.rootConfig = oldPushContext.sidecarIndex.rootConfig
 	}
 
 	return nil
