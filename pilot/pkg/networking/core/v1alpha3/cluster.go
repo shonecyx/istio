@@ -274,33 +274,39 @@ func (configgen *ConfigGeneratorImpl) buildInboundClusters(cb *ClusterBuilder, i
 		if noneMode {
 			return nil
 		}
+	}
 
-		clustersToBuild := make(map[int][]*model.ServiceInstance)
-		for _, instance := range instances {
-			// Filter out service instances with the same port as we are going to mark them as duplicates any way
-			// in normalizeClusters method.
-			// However, we still need to capture all the instances on this port, as its required to populate telemetry metadata
-			// The first instance will be used as the "primary" instance; this means if we have an conflicts between
-			// Services the first one wins
-			ep := int(instance.Endpoint.EndpointPort)
-			clustersToBuild[ep] = append(clustersToBuild[ep], instance)
-		}
+	clustersToBuild := make(map[int][]*model.ServiceInstance)
+	for _, instance := range instances {
+		// Filter out service instances with the same port as we are going to mark them as duplicates any way
+		// in normalizeClusters method.
+		// However, we still need to capture all the instances on this port, as its required to populate telemetry metadata
+		// The first instance will be used as the "primary" instance; this means if we have an conflicts between
+		// Services the first one wins
+		ep := int(instance.Endpoint.EndpointPort)
+		clustersToBuild[ep] = append(clustersToBuild[ep], instance)
+	}
 
-		bind := actualLocalHost
-		if features.EnableInboundPassthrough {
-			bind = ""
+	bind := actualLocalHost
+	if features.EnableInboundPassthrough {
+		bind = ""
+	}
+	// For each workload port, we will construct a cluster
+	for _, instances := range clustersToBuild {
+		instance := instances[0]
+		if AllowSidecarServiceInboundListenersMerge(cb.proxy, int(instance.Endpoint.EndpointPort)) {
+			continue
 		}
-		// For each workload port, we will construct a cluster
-		for _, instances := range clustersToBuild {
-			instance := instances[0]
-			localCluster := cb.buildInboundClusterForPortOrUDS(int(instance.Endpoint.EndpointPort), bind, instance, instances)
-			// If inbound cluster match has service, we should see if it matches with any host name across all instances.
-			var hosts []host.Name
-			for _, si := range instances {
-				hosts = append(hosts, si.Service.Hostname)
-			}
-			clusters = cp.conditionallyAppend(clusters, hosts, localCluster.build())
+		localCluster := cb.buildInboundClusterForPortOrUDS(int(instance.Endpoint.EndpointPort), bind, instance, instances)
+		// If inbound cluster match has service, we should see if it matches with any host name across all instances.
+		var hosts []host.Name
+		for _, si := range instances {
+			hosts = append(hosts, si.Service.Hostname)
 		}
+		clusters = cp.conditionallyAppend(clusters, hosts, localCluster.build())
+
+	}
+	if !sidecarScope.HasCustomIngressListeners {
 		return clusters
 	}
 

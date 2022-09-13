@@ -175,6 +175,26 @@ func (configgen *ConfigGeneratorImpl) buildSidecarListeners(builder *ListenerBui
 	return builder
 }
 
+//func AllowSidecarServiceInboundListenersMerge(node *model.Proxy, instances []*model.ServiceInstance) {
+func AllowSidecarServiceInboundListenersMerge(node *model.Proxy, port int) bool {
+	// we only allow overlap if port is declared in sidecar ingress and not in service
+	// e.g cpdlc 8083 use case
+	// Also allowInboundListenersMerge is helpful as sidecar is controller object not managed by customer
+	sidecarScope := node.SidecarScope
+	if sidecarScope.HasCustomIngressListeners {
+		ingressPortListMap := make(map[int]bool)
+		for _, ingressListener := range sidecarScope.Sidecar.Ingress {
+			ingressPortListMap[int(ingressListener.Port.Number)] = true
+		}
+		if _, ok := ingressPortListMap[port]; ok {
+			// port present in sidecarIngress listener so let sidecar take precedence
+			return true
+		}
+	}
+	return false
+
+}
+
 // buildSidecarInboundListeners creates listeners for the server-side (inbound)
 // configuration for co-located service proxyInstances.
 func (configgen *ConfigGeneratorImpl) buildSidecarInboundListeners(
@@ -196,66 +216,73 @@ func (configgen *ConfigGeneratorImpl) buildSidecarInboundListeners(
 		if noneMode {
 			return nil
 		}
+	}
+	// inbound connections/requests are redirected to the endpoint address but appear to be sent
+	// to the service address.
+	//
+	// Protocol sniffing for inbound listener.
+	// If there is no ingress listener, for each service instance, the listener port protocol is determined
+	// by the service port protocol. If user doesn't specify the service port protocol, the listener will
+	// be generated using protocol sniffing.
+	// For example, the set of service instances
+	//      --> Endpoint
+	//              Address:Port 172.16.0.1:1111
+	//              ServicePort  80|HTTP
+	//      --> Endpoint
+	//              Address:Port 172.16.0.1:2222
+	//              ServicePort  8888|TCP
+	//      --> Endpoint
+	//              Address:Port 172.16.0.1:3333
+	//              ServicePort 9999|Unknown
+	//
+	//	The pilot will generate three listeners, the last one will use protocol sniffing.
+	//
+	for _, instance := range node.ServiceInstances {
+		endpoint := instance.Endpoint
+		// Inbound listeners will be aggregated into a single virtual listener (port 15006)
+		// As a result, we don't need to worry about binding to the endpoint IP; we already know
+		// all traffic for these listeners is inbound.
+		// TODO: directly build filter chains rather than translating listeneners to filter chains
+		wildcard, _ := getActualWildcardAndLocalHost(node)
+		bind := wildcard
 
-		// inbound connections/requests are redirected to the endpoint address but appear to be sent
-		// to the service address.
-		//
-		// Protocol sniffing for inbound listener.
-		// If there is no ingress listener, for each service instance, the listener port protocol is determined
-		// by the service port protocol. If user doesn't specify the service port protocol, the listener will
-		// be generated using protocol sniffing.
-		// For example, the set of service instances
-		//      --> Endpoint
-		//              Address:Port 172.16.0.1:1111
-		//              ServicePort  80|HTTP
-		//      --> Endpoint
-		//              Address:Port 172.16.0.1:2222
-		//              ServicePort  8888|TCP
-		//      --> Endpoint
-		//              Address:Port 172.16.0.1:3333
-		//              ServicePort 9999|Unknown
-		//
-		//	The pilot will generate three listeners, the last one will use protocol sniffing.
-		//
-		for _, instance := range node.ServiceInstances {
-			endpoint := instance.Endpoint
-			// Inbound listeners will be aggregated into a single virtual listener (port 15006)
-			// As a result, we don't need to worry about binding to the endpoint IP; we already know
-			// all traffic for these listeners is inbound.
-			// TODO: directly build filter chains rather than translating listeneners to filter chains
-			wildcard, _ := getActualWildcardAndLocalHost(node)
-			bind := wildcard
-
-			// Local service instances can be accessed through one of three
-			// addresses: localhost, endpoint IP, and service
-			// VIP. Localhost bypasses the proxy and doesn't need any TCP
-			// route config. Endpoint IP is handled below and Service IP is handled
-			// by outbound routes.
-			// Traffic sent to our service VIP is redirected by remote
-			// services' kubeproxy to our specific endpoint IP.
-			port := *instance.ServicePort
-			port.Port = int(endpoint.EndpointPort)
-			listenerOpts := buildListenerOpts{
-				push:       push,
-				proxy:      node,
-				bind:       bind,
-				port:       &port,
-				bindToPort: false,
-				protocol:   istionetworking.ModelProtocolToListenerProtocol(instance.ServicePort.Protocol, core.TrafficDirection_INBOUND, false),
-			}
-
-			pluginParams := &plugin.InputParams{
-				Node:            node,
-				ServiceInstance: instance,
-				Push:            push,
-			}
-
-			if l := configgen.buildSidecarInboundListenerForPortOrUDS(listenerOpts, pluginParams, listenerMap); l != nil {
-				listeners = append(listeners, l)
-			}
+		// Local service instances can be accessed through one of three
+		// addresses: localhost, endpoint IP, and service
+		// VIP. Localhost bypasses the proxy and doesn't need any TCP
+		// route config. Endpoint IP is handled below and Service IP is handled
+		// by outbound routes.
+		// Traffic sent to our service VIP is redirected by remote
+		// services' kubeproxy to our specific endpoint IP.
+		port := *instance.ServicePort
+		port.Port = int(endpoint.EndpointPort)
+		if AllowSidecarServiceInboundListenersMerge(node, port.Port) {
+			// here if port is declared in service and sidecar ingress both, we continue to take the one on sidecar + other service ports
+			// e.g. a,b,c in service and c,d in sidecar ingress,
+			// this will still generate listeners for a,b,c,d where c is picked from sidecar ingress
+			continue
 		}
-		return listeners
+		listenerOpts := buildListenerOpts{
+			push:       push,
+			proxy:      node,
+			bind:       bind,
+			port:       &port,
+			bindToPort: false,
+			protocol:   istionetworking.ModelProtocolToListenerProtocol(instance.ServicePort.Protocol, core.TrafficDirection_INBOUND, false),
+		}
 
+		pluginParams := &plugin.InputParams{
+			Node:            node,
+			ServiceInstance: instance,
+			Push:            push,
+		}
+
+		if l := configgen.buildSidecarInboundListenerForPortOrUDS(listenerOpts, pluginParams, listenerMap); l != nil {
+			listeners = append(listeners, l)
+		}
+
+	}
+	if !sidecarScope.HasCustomIngressListeners {
+		return listeners
 	}
 
 	for _, ingressListener := range sidecarScope.Sidecar.Ingress {
@@ -288,7 +315,6 @@ func (configgen *ConfigGeneratorImpl) buildSidecarInboundListeners(
 
 		instance := configgen.findOrCreateServiceInstance(node.ServiceInstances, ingressListener,
 			sidecarScope.Name, sidecarScope.Namespace)
-
 		listenerOpts := buildListenerOpts{
 			push:       push,
 			proxy:      node,

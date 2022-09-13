@@ -149,6 +149,8 @@ func TestInboundListenerConfig(t *testing.T) {
 
 	testInboundListenerConfigWithGrpc(t, getProxy(),
 		buildService("test1.com", wildcardIP, protocol.GRPC, tnow.Add(1*time.Second)))
+	testInboundListenerConfigWithSidecarIngressPortMergeServicePort(t, getProxy(),
+		buildService("test.com", wildcardIP, protocol.HTTP, tnow.Add(1*time.Second)))
 }
 
 func TestOutboundListenerConflict_HTTPWithCurrentUnknown(t *testing.T) {
@@ -1014,6 +1016,60 @@ func testInboundListenerConfigWithSidecar(t *testing.T, proxy *model.Proxy, serv
 		t.Fatalf("expected %d listeners, found %d", 1, len(listeners))
 	}
 	verifyFilterChainMatch(t, listeners[0])
+}
+
+func testInboundListenerConfigWithSidecarIngressPortMergeServicePort(t *testing.T, proxy *model.Proxy, services ...*model.Service) {
+	t.Helper()
+	p := registry.NewPlugins([]string{plugin.Authn})[0]
+	sidecarConfig := &config.Config{
+		Meta: config.Meta{
+			Name:      "foo",
+			Namespace: "not-default",
+		},
+		Spec: &networking.Sidecar{
+			Ingress: []*networking.IstioIngressListener{
+				{
+					Port: &networking.Port{
+						Number:   8083,
+						Protocol: "HTTP",
+						Name:     "http-8083",
+					},
+					Bind:            "1.1.1.1",
+					DefaultEndpoint: "127.0.0.1:8083",
+				},
+			},
+		},
+	}
+	listeners := buildInboundListeners(t, p, proxy, sidecarConfig, services...)
+	if len(listeners) != 2 {
+		t.Fatalf("expected %d listeners, found %d", 2, len(listeners))
+	}
+	for _, l := range listeners {
+		for _, f := range l.FilterChains {
+			if isHTTPFilterChain(f) {
+				verifyHTTPFilterChainMatchMerged(t, f)
+			}
+		}
+	}
+}
+
+func verifyHTTPFilterChainMatchMerged(t *testing.T, f *listener.FilterChain) {
+	if f.FilterChainMatch.TransportProtocol == "tls" {
+		if len(f.FilterChainMatch.ApplicationProtocols) != len(allIstioMtlsALPNs) {
+			t.Fatalf("expected %d application protocols, %v", len(allIstioMtlsALPNs), len(f.FilterChainMatch.ApplicationProtocols))
+		}
+	}
+
+	hcm := &hcm.HttpConnectionManager{}
+	if err := getFilterConfig(f.Filters[0], hcm); err != nil {
+		t.Fatalf("failed to get HCM, config %v", hcm)
+	}
+
+	hasAlpn := hasAlpnFilter(hcm.HttpFilters)
+
+	if hasAlpn {
+		t.Fatal("ALPN filter for inbound is unexpected.")
+	}
 }
 
 func testInboundListenerConfigWithSidecarWithoutServices(t *testing.T, proxy *model.Proxy) {
