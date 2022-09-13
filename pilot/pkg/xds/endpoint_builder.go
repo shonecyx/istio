@@ -259,56 +259,44 @@ func (b *EndpointBuilder) buildLocalityLbEndpointsFromShards(
 ) []*LocLbEndpointsAndOptions {
 	localityEpMap := make(map[string]*LocLbEndpointsAndOptions)
 	locEps := make([]*LocLbEndpointsAndOptions, 0, len(localityEpMap))
-
 	if shards != nil {
-		b.genLocalityEpMap(shards, svcPort, localityEpMap, false, 0)
-		locs := make([]string, 0, len(localityEpMap))
-		for k := range localityEpMap {
-			locs = append(locs, k)
-		}
-		if len(locs) >= 2 {
-			sort.Strings(locs)
-		}
-		for _, k := range locs {
-			locLbEps := localityEpMap[k]
-			var weight uint32
-			for _, ep := range locLbEps.llbEndpoints.LbEndpoints {
-				weight += ep.LoadBalancingWeight.GetValue()
-			}
-			locLbEps.llbEndpoints.LoadBalancingWeight = &wrappers.UInt32Value{
-				Value: weight,
-			}
-			locEps = append(locEps, locLbEps)
-		}
+		locEps = b.generatelocEps(shards, svcPort, failOverPort, locEps, false, 0)
 	}
 
 	// failover case to populate failover endpoints
 	if failoverShards != nil {
-		localityEpMapFailover := make(map[string]*LocLbEndpointsAndOptions)
-		b.genLocalityEpMap(failoverShards, svcPort, localityEpMapFailover, true, failOverPort)
-		locs := make([]string, 0, len(localityEpMapFailover))
-		for k := range localityEpMapFailover {
-			locs = append(locs, k)
-		}
-		if len(locs) >= 2 {
-			sort.Strings(locs)
-		}
-		for _, k := range locs {
-			locLbEps := localityEpMapFailover[k]
-			var weight uint32
-			for _, ep := range locLbEps.llbEndpoints.LbEndpoints {
-				weight += ep.LoadBalancingWeight.GetValue()
-			}
-			locLbEps.llbEndpoints.LoadBalancingWeight = &wrappers.UInt32Value{
-				Value: weight,
-			}
-			locLbEps.llbEndpoints.Priority = 100 //failover cluster is P100, default is P0
-			locEps = append(locEps, locLbEps)
-		}
+		//failover cluster is P100, default is P0
+		locEps = b.generatelocEps(failoverShards, svcPort, failOverPort, locEps, true, 100)
+	}
+	if len(locEps) == 0 {
+		b.push.AddMetric(model.ProxyStatusClusterNoInstances, b.clusterName, "", "")
+	}
+	return locEps
+}
 
-		if len(locEps) == 0 {
-			b.push.AddMetric(model.ProxyStatusClusterNoInstances, b.clusterName, "", "")
+func (b *EndpointBuilder) generatelocEps(shards *EndpointShards, svcPort *model.Port, failOverPort uint32, locEps []*LocLbEndpointsAndOptions, isFailover bool, priority uint32) []*LocLbEndpointsAndOptions {
+	localityEpMapFailover := make(map[string]*LocLbEndpointsAndOptions)
+	b.genLocalityEpMap(shards, svcPort, localityEpMapFailover, isFailover, failOverPort)
+	locs := make([]string, 0, len(localityEpMapFailover))
+	for k := range localityEpMapFailover {
+		locs = append(locs, k)
+	}
+	if len(locs) >= 2 {
+		sort.Strings(locs)
+	}
+	for _, k := range locs {
+		locLbEps := localityEpMapFailover[k]
+		var weight uint32
+		for _, ep := range locLbEps.llbEndpoints.LbEndpoints {
+			weight += ep.LoadBalancingWeight.GetValue()
 		}
+		locLbEps.llbEndpoints.LoadBalancingWeight = &wrappers.UInt32Value{
+			Value: weight,
+		}
+		if priority != 0 {
+			locLbEps.llbEndpoints.Priority = priority
+		}
+		locEps = append(locEps, locLbEps)
 	}
 	return locEps
 }

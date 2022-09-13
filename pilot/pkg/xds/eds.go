@@ -264,18 +264,21 @@ func (s *DiscoveryServer) deleteService(cluster, serviceName, namespace string) 
 // Initial implementation is computing the endpoints on the flight - caching will be added as needed, based on
 // perf tests.
 func (s *DiscoveryServer) llbEndpointAndOptionsForCluster(b EndpointBuilder) ([]*LocLbEndpointsAndOptions, bool, uint32, error) {
-	isFailover := false
+	var (
+		isFailover             = false
+		failoverServiceName    string
+		failOverPort           uint32
+		overProvisioningFactor uint32
+		epShardsFailover       *EndpointShards
+		failoverSvcNs          string
+	)
 	if b.service == nil {
 		// Shouldn't happen here
 		log.Debugf("can not find the service for cluster %s", b.clusterName)
 		return make([]*LocLbEndpointsAndOptions, 0), false, 0, nil
 	}
 	destRule := b.destinationRule
-	var failoverServiceName string
-	var failOverPort uint32
-	var overProvisioningFactor uint32
-	var failoverSvcNs = b.service.Attributes.Namespace
-	var epShardsFailover *EndpointShards
+	failoverSvcNs = b.service.Attributes.Namespace
 	if destRule != nil {
 		if failoverServiceInAnnotation, ok := destRule.Annotations[FailoverServiceAnnotation]; ok {
 			fqdn := string(model.ResolveShortnameToFQDN(failoverServiceInAnnotation, destRule.Meta))
