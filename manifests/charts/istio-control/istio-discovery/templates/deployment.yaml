@@ -54,7 +54,7 @@ spec:
 {{ toYaml .Values.pilot.podAnnotations | indent 8 }}
         {{- end }}
         models.tess.io/cms-requested: "true"
-        {{- if .Values.pilot.protegoCert }}
+        {{- if .Values.pilot.protegoCert.enabled }}
         models.tess.io/cms-accesspoint-requested: "true"
         application.tess.io/managed-secrets: "true"
         {{- end }}
@@ -157,7 +157,7 @@ spec:
           - name: PILOT_ENDPOINT_TELEMETRY_LABEL
             value: "false"
 {{- end }}
-{{- if .Values.pilot.protegoCert }}
+{{- if .Values.pilot.protegoCert.enabled }}
           - name: PILOT_ENABLE_PROTEGO_CERT
             value: "true"
           - name: MICROVAULT_ADDRESS
@@ -202,9 +202,10 @@ spec:
           - name: extracacerts
             mountPath: /cacerts
           {{- end }}
-{{- if .Values.pilot.protegoCert }}
+{{- if .Values.pilot.protegoCert.enabled }}
         - name: microvault
-          image: hub.tess.io/platformsecurity/microvault:0.0.4
+          image: "{{ .Values.pilot.protegoCert.image }}"
+          imagePullPolicy:  {{ .Values.pilot.protegoCert.imagePullPolicy }}
           args:
           - -cert-agent-enabled
           - -cert-file-path=/data/cert/server.pem
@@ -239,7 +240,6 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.labels['applicationinstance.tess.io/name']
-          imagePullPolicy: Always
           securityContext:
             runAsUser: 1337
             runAsGroup: 1337
@@ -297,7 +297,7 @@ spec:
         configMap:
           name: pilot-jwks-extra-cacerts{{- if not (eq .Values.revision "") }}-{{ .Values.revision }}{{- end }}
   {{- end }}
-  {{- if .Values.pilot.protegoCert }}
+  {{- if .Values.pilot.protegoCert.enabled }}
       - emptyDir: {}
         name: cert-data
       - emptyDir: {}
