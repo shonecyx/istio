@@ -2152,6 +2152,18 @@ func TestGatewayListenersStripRbacPolicies(t *testing.T) {
 		},
 	}
 
+	authzPolicy_allow_all := config.Config{
+		Meta: config.Meta{
+			Name:             "allow-all",
+			Namespace:        "not-default",
+			GroupVersionKind: gvk.AuthorizationPolicy,
+		},
+		Spec: &security.AuthorizationPolicy{
+			Selector: &apitype.WorkloadSelector{MatchLabels: map[string]string{"istio": "ingressgateway"}},
+			Rules:    []*security.Rule{},
+		},
+	}
+
 	cases := []struct {
 		name                 string
 		gateways             []config.Config
@@ -2187,6 +2199,26 @@ func TestGatewayListenersStripRbacPolicies(t *testing.T) {
 				"0.0.0.0_443": {
 					"vip-1.test.com": {"ns[not-default]-policy[authz-1]-rule[0]"},
 					"vip-2.test.com": {"ns[not-default]-policy[authz-2]-rule[0]"},
+				},
+			},
+		},
+		{
+			"gateway with http server and allow all",
+			[]config.Config{httpGateway1},
+			[]config.Config{authzPolicy_allow_all},
+			map[string]map[string][]string{
+				"0.0.0.0_80": {
+					"": {"ns[not-default]-policy[allow-all]-rule[0]"},
+				},
+			},
+		},
+		{
+			"gateway with https server and allow all",
+			[]config.Config{httpsGateway1},
+			[]config.Config{authzPolicy_allow_all},
+			map[string]map[string][]string{
+				"0.0.0.0_443": {
+					"": {"ns[not-default]-policy[allow-all]-rule[0]"},
 				},
 			},
 		},
@@ -2249,6 +2281,7 @@ func TestGatewayListenersStripRbacPolicies(t *testing.T) {
 			})
 			proxy := cg.SetupProxy(&proxyGateway)
 			listeners := cg.ConfigGen.BuildListeners(proxy, cg.PushContext())
+			// t.Log(xdstest.DumpList(t, xdstest.InterfaceSlice(listeners)))
 			xdstest.ValidateListeners(t, listeners)
 
 			for listenerName, fcs := range tt.expectedRbacPolicies {
