@@ -98,7 +98,7 @@ func (p Plugin) buildFilter(in *plugin.InputParams, mutable *networking.MutableO
 	for cnum := range mutable.FilterChains {
 		switch mutable.FilterChains[cnum].ListenerProtocol {
 		case networking.ListenerProtocolTCP:
-			if in.Node.Type == model.SidecarProxy {
+			if in.Node.Type == model.SidecarProxy || !in.Node.Metadata.EnableAuthzPolicyStrip {
 				// build policies for sidecar without optimization
 				tcpFilters = b.BuildTCP(nil)
 			} else {
@@ -108,7 +108,7 @@ func (p Plugin) buildFilter(in *plugin.InputParams, mutable *networking.MutableO
 			option.Logger.AppendDebugf("added %d TCP filters to filter chain %d", len(tcpFilters), cnum)
 			mutable.FilterChains[cnum].TCP = append(mutable.FilterChains[cnum].TCP, tcpFilters...)
 		case networking.ListenerProtocolHTTP:
-			if in.Node.Type == model.SidecarProxy {
+			if in.Node.Type == model.SidecarProxy || !in.Node.Metadata.EnableAuthzPolicyStrip {
 				// build policies for sidecar without optimization
 				httpFilters = b.BuildHTTP(nil)
 			} else {

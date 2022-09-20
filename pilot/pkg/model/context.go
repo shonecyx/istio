@@ -567,6 +567,10 @@ type NodeMetadata struct {
 	// Contains a copy of the raw metadata. This is needed to lookup arbitrary values.
 	// If a value is known ahead of time it should be added to the struct rather than reading from here,
 	Raw map[string]interface{} `json:"-"`
+
+	// EnableAuthzPolicyStrip indicates if AuthzPolicy should be stripped for improving scalability.
+	// This is required for egress gateway.
+	EnableAuthzPolicyStrip StringBool `json:"ENABLE_AUTHZ_POLICY_STRIP,omitempty"`
 }
 
 // ProxyConfigOrDefault is a helper function to get the ProxyConfig from metadata, or fallback to a default

@@ -2165,10 +2165,11 @@ func TestGatewayListenersStripRbacPolicies(t *testing.T) {
 	}
 
 	cases := []struct {
-		name                 string
-		gateways             []config.Config
-		authzPolicies        []config.Config
-		expectedRbacPolicies map[string]map[string][]string
+		name                   string
+		gateways               []config.Config
+		authzPolicies          []config.Config
+		expectedRbacPolicies   map[string]map[string][]string
+		enableAuthzPolicyStrip pilot_model.StringBool
 	}{
 		{
 			"gateway with https server",
@@ -2179,6 +2180,18 @@ func TestGatewayListenersStripRbacPolicies(t *testing.T) {
 					"vip-1.test.com": {"ns[not-default]-policy[authz-1]-rule[0]"},
 				},
 			},
+			true,
+		},
+		{
+			"gateway with https server",
+			[]config.Config{httpsGateway1},
+			[]config.Config{authzPolicy1, authzPolicy2},
+			map[string]map[string][]string{
+				"0.0.0.0_443": {
+					"vip-1.test.com": {"ns[not-default]-policy[authz-1]-rule[0]", "ns[not-default]-policy[authz-2]-rule[0]"},
+				},
+			},
+			false,
 		},
 		{
 			"gateway with http server",
@@ -2190,6 +2203,7 @@ func TestGatewayListenersStripRbacPolicies(t *testing.T) {
 						"ns[not-default]-policy[authz-2]-rule[0]"},
 				},
 			},
+			true,
 		},
 		{
 			"gateway with multiple https servers",
@@ -2201,6 +2215,7 @@ func TestGatewayListenersStripRbacPolicies(t *testing.T) {
 					"vip-2.test.com": {"ns[not-default]-policy[authz-2]-rule[0]"},
 				},
 			},
+			true,
 		},
 		{
 			"gateway with http server and allow all",
@@ -2211,6 +2226,7 @@ func TestGatewayListenersStripRbacPolicies(t *testing.T) {
 					"": {"ns[not-default]-policy[allow-all]-rule[0]"},
 				},
 			},
+			true,
 		},
 		{
 			"gateway with https server and allow all",
@@ -2221,6 +2237,7 @@ func TestGatewayListenersStripRbacPolicies(t *testing.T) {
 					"": {"ns[not-default]-policy[allow-all]-rule[0]"},
 				},
 			},
+			true,
 		},
 	}
 
@@ -2280,6 +2297,7 @@ func TestGatewayListenersStripRbacPolicies(t *testing.T) {
 				SkipRun: false,
 			})
 			proxy := cg.SetupProxy(&proxyGateway)
+			proxy.Metadata.EnableAuthzPolicyStrip = tt.enableAuthzPolicyStrip
 			listeners := cg.ConfigGen.BuildListeners(proxy, cg.PushContext())
 			// t.Log(xdstest.DumpList(t, xdstest.InterfaceSlice(listeners)))
 			xdstest.ValidateListeners(t, listeners)
