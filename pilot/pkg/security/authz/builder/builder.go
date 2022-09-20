@@ -204,6 +204,11 @@ func intersect(a []string, b []string) bool {
 }
 
 func (b Builder) skipRule(rule *security.Rule, fcOpts *plugin.FilterChainOpts) bool {
+
+	const (
+		attrConnSNI = "connection.sni"
+	)
+
 	if fcOpts == nil {
 		return false
 	}
@@ -214,8 +219,18 @@ func (b Builder) skipRule(rule *security.Rule, fcOpts *plugin.FilterChainOpts) b
 	}
 
 	for _, t := range rule.To {
-		if intersect(fcOpts.SniHosts, t.Operation.Hosts) {
+		hosts := append(t.Operation.Hosts, t.Operation.NotHosts...)
+		if intersect(fcOpts.SniHosts, hosts) {
 			return false
+		}
+	}
+
+	for _, w := range rule.When {
+		if w.Key == attrConnSNI {
+			hosts := append(w.Values, w.NotValues...)
+			if intersect(fcOpts.SniHosts, hosts) {
+				return false
+			}
 		}
 	}
 

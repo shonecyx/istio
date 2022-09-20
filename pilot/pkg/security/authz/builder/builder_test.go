@@ -333,6 +333,68 @@ func TestGenerator_GenerateTCP(t *testing.T) {
 	}
 }
 
+func TestGenerator_GenerateHTTPWithOptimization(t *testing.T) {
+	testCases := []struct {
+		name       string
+		tdBundle   trustdomain.Bundle
+		meshConfig *meshconfig.MeshConfig
+		fcOpts     *plugin.FilterChainOpts
+		input      string
+		want       []string
+	}{
+		{
+			name: "keep-to-operation-hosts",
+			fcOpts: &plugin.FilterChainOpts{
+				SniHosts: []string{"exact.com"},
+			},
+			input: "allow-host-in.yaml",
+			want:  []string{"allow-host-keep-out.yaml"},
+		},
+		{
+			name: "remove-to-operation-hosts",
+			fcOpts: &plugin.FilterChainOpts{
+				SniHosts: []string{"not-match.com"},
+			},
+			input: "allow-host-in.yaml",
+			want:  []string{"allow-host-remove-out.yaml"},
+		},
+		{
+			name: "keep-when-connection.sni",
+			fcOpts: &plugin.FilterChainOpts{
+				SniHosts: []string{"exact.com"},
+			},
+			input: "allow-connection-sni-in.yaml",
+			want:  []string{"allow-connection-sni-keep-out.yaml"},
+		},
+		{
+			name: "remove-when-connection.sni",
+			fcOpts: &plugin.FilterChainOpts{
+				SniHosts: []string{"not-match.com"},
+			},
+			input: "allow-connection-sni-in.yaml",
+			want:  []string{"allow-connection-sni-remove-out.yaml"},
+		},
+	}
+
+	baseDir := "http/"
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			option := Option{
+				IsCustomBuilder: tc.meshConfig != nil,
+				Logger:          &AuthzLogger{},
+			}
+			in := inputParams(t, baseDir+tc.input, tc.meshConfig)
+			defer option.Logger.Report(in)
+			g := New(tc.tdBundle, in, option)
+			if g == nil {
+				t.Fatalf("failed to create generator")
+			}
+			got := g.BuildHTTP(tc.fcOpts)
+			verify(t, convertHTTP(got), baseDir, tc.want, false /* forTCP */)
+		})
+	}
+}
+
 func verify(t *testing.T, gots []proto.Message, baseDir string, wants []string, forTCP bool) {
 	t.Helper()
 
