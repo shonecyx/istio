@@ -1847,6 +1847,123 @@ func testOutboundListenerConfigWithSidecarWithTlsContext(t *testing.T, services 
 	}
 }
 
+func TestOutboundListenerConfig_WithAutoAllocatedAddress(t *testing.T) {
+	// Add service and verify it's config
+
+	const tcpPort = 79
+	services := []*model.Service{
+		// buildServiceWithPort("test1.com", tcpPort, protocol.TCP, tnow),
+		{
+			CreationTime:         tnow.Add(1 * time.Second),
+			Hostname:             host.Name("test1.com"),
+			Address:              wildcardIP,
+			AutoAllocatedAddress: "240.240.0.100",
+			ClusterVIPs:          make(map[string]string),
+			Ports: model.PortList{
+				&model.Port{
+					Name:     "tcp",
+					Port:     tcpPort,
+					Protocol: protocol.TCP,
+				},
+			},
+			Resolution: model.DNSLB,
+			Attributes: model.ServiceAttributes{
+				Namespace: "default",
+			},
+		},
+	}
+
+	sidecarConfig := &config.Config{
+		Meta: config.Meta{
+			Name:             "sidecar-with-tcp",
+			Namespace:        "not-default",
+			GroupVersionKind: gvk.Sidecar,
+		},
+		Spec: &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Hosts: []string{"default/*"},
+				},
+			},
+		},
+	}
+
+	sidecarConfigWithPort := &config.Config{
+		Meta: config.Meta{
+			Name:             "sidecar-with-tcp-port",
+			Namespace:        "not-default",
+			GroupVersionKind: gvk.Sidecar,
+		},
+		Spec: &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Hosts: []string{"default/*"},
+					Port: &networking.Port{
+						Number:   tcpPort,
+						Protocol: "TCP",
+						Name:     "tcp",
+					},
+				},
+			},
+		},
+	}
+
+	tests := []struct {
+		name                      string
+		services                  []*model.Service
+		sidecar                   *config.Config
+		numListenersOnServicePort int
+		useAutoAllocatedAddress   bool
+	}{
+		{
+			name:                      "egress tcp with auto allocated address",
+			services:                  services,
+			sidecar:                   sidecarConfig,
+			numListenersOnServicePort: 1,
+			useAutoAllocatedAddress:   true,
+		},
+		{
+			name:                      "egress tcp and port with auto allocated address",
+			services:                  services,
+			sidecar:                   sidecarConfigWithPort,
+			numListenersOnServicePort: 1,
+			useAutoAllocatedAddress:   true,
+		},
+	}
+
+	proxy := getProxy()
+	proxy.Metadata.DNSCapture = true
+	proxy.Metadata.DNSAutoAllocate = true
+	p := &fakePlugin{}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			listeners := buildOutboundListeners(t, p, proxy, tt.sidecar, nil, services...)
+
+			listenersToCheck := make([]string, 0)
+			for _, l := range listeners {
+				if l.Address.GetSocketAddress().GetPortValue() == tcpPort {
+					listenersToCheck = append(listenersToCheck, l.Address.GetSocketAddress().GetAddress())
+				}
+			}
+
+			if len(listenersToCheck) != tt.numListenersOnServicePort {
+				t.Errorf("Expected %d listeners, got %d (%v)", tt.numListenersOnServicePort, len(listenersToCheck), listenersToCheck)
+			}
+
+			if tt.useAutoAllocatedAddress {
+				for _, addr := range listenersToCheck {
+					if !strings.HasPrefix(addr, "240.240") {
+						t.Errorf("Expected %d listeners on service port 79, got %d (%v)", tt.numListenersOnServicePort, len(listenersToCheck), listenersToCheck)
+					}
+				}
+
+			}
+		})
+	}
+}
+
 func TestOutboundListenerAccessLogs(t *testing.T) {
 	t.Helper()
 	p := &fakePlugin{}

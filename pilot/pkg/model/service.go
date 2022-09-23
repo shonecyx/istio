@@ -699,15 +699,16 @@ func (s *Service) DeepCopy() *Service {
 	s.Mutex.RUnlock()
 
 	return &Service{
-		Attributes:      attrs.(ServiceAttributes),
-		Ports:           ports.(PortList),
-		ServiceAccounts: accounts.([]string),
-		CreationTime:    s.CreationTime,
-		Hostname:        s.Hostname,
-		Address:         s.Address,
-		ClusterVIPs:     clusterVIPs.(map[string]string),
-		Resolution:      s.Resolution,
-		MeshExternal:    s.MeshExternal,
+		Attributes:           attrs.(ServiceAttributes),
+		Ports:                ports.(PortList),
+		ServiceAccounts:      accounts.([]string),
+		CreationTime:         s.CreationTime,
+		Hostname:             s.Hostname,
+		Address:              s.Address,
+		ClusterVIPs:          clusterVIPs.(map[string]string),
+		AutoAllocatedAddress: s.AutoAllocatedAddress,
+		Resolution:           s.Resolution,
+		MeshExternal:         s.MeshExternal,
 	}
 }
 
