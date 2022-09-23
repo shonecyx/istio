@@ -22,7 +22,7 @@ SHELL := /bin/bash -o pipefail
 export VERSION ?= 1.10-dev
 
 # Base version of Istio image to use
-BASE_VERSION ?= 1.10-ebay.21
+BASE_VERSION ?= 1.10-ebay.22
 
 export GO111MODULE ?= on
 export GOPRIVATE ?= tess.io
