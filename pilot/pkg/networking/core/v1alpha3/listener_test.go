@@ -1848,11 +1848,9 @@ func testOutboundListenerConfigWithSidecarWithTlsContext(t *testing.T, services 
 }
 
 func TestOutboundListenerConfig_WithAutoAllocatedAddress(t *testing.T) {
-	// Add service and verify it's config
 
 	const tcpPort = 79
 	services := []*model.Service{
-		// buildServiceWithPort("test1.com", tcpPort, protocol.TCP, tnow),
 		{
 			CreationTime:         tnow.Add(1 * time.Second),
 			Hostname:             host.Name("test1.com"),

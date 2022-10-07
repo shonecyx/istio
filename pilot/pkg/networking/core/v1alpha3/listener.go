@@ -546,6 +546,14 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundListeners(node *model.
 			}
 		}
 
+		bind := ""
+		if egressListener.IstioListener != nil && egressListener.IstioListener.Bind != "" {
+			bind = egressListener.IstioListener.Bind
+		}
+		if bindToPort && bind == "" {
+			bind = actualLocalHostAddress
+		}
+
 		if egressListener.IstioListener != nil &&
 			egressListener.IstioListener.Port != nil {
 			// We have a non catch all listener on some user specified port
@@ -576,13 +584,6 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundListeners(node *model.
 			// If captureMode is not NONE, i.e., bindToPort is false, then
 			// we will bind to user specified IP (if any) or to the VIPs of services in
 			// this egress listener.
-			bind := ""
-			if egressListener.IstioListener.Bind != "" {
-				bind = egressListener.IstioListener.Bind
-			}
-			if bindToPort && bind == "" {
-				bind = actualLocalHostAddress
-			}
 
 			// Build ListenerOpts and PluginParams once and reuse across all Services to avoid unnecessary allocations.
 			listenerOpts := buildListenerOpts{
@@ -631,14 +632,6 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundListeners(node *model.
 			// with locked bit set to true
 			for _, e := range listenerMap {
 				e.locked = true
-			}
-
-			bind := ""
-			if egressListener.IstioListener != nil && egressListener.IstioListener.Bind != "" {
-				bind = egressListener.IstioListener.Bind
-			}
-			if bindToPort && bind == "" {
-				bind = actualLocalHostAddress
 			}
 
 			// Build ListenerOpts and PluginParams once and reuse across all Services to avoid unnecessary allocations.
