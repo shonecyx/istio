@@ -1,0 +1,4 @@
+# following placeholder serves as a seperator for tess ingress/egress GWs group 
+{{- if eq .Values.gateways.gatewaysGroupPlaceholderEnabled true }}
+kind: istio-gateways-group-separator
+{{- end }}

@@ -114,6 +114,9 @@ gateways:
     # The injection template to use for the gateway. If not set, no injection will be performed.
     injectionTemplate: ""
 
+  # enable istio gateways seperator placeholder, for splitting gateways groups specs into multiple files
+  gatewaysGroupPlaceholderEnabled: false
+
 # Revision is set as 'version' label and part of the resource names when installing multiple control planes.
 revision: ""
 
