@@ -15,6 +15,9 @@ replace github.com/docker/docker => github.com/moby/moby v17.12.0-ce-rc1.0.20200
 // Client-go does not handle different versions of mergo due to some breaking changes - use the matching version
 replace github.com/imdario/mergo => github.com/imdario/mergo v0.3.5
 
+// This is for envoy ebay customized configuration (e.g. customized filter)
+replace github.com/envoyproxy/go-control-plane => tess.io/ebayistio/envoy-go-control-plane v0.0.0-20221108231945-691389bc01de
+
 require (
 	cloud.google.com/go v0.80.0
 	contrib.go.opencensus.io/exporter/prometheus v0.3.0
@@ -52,7 +55,7 @@ require (
 	github.com/kylelemons/godebug v1.1.0
 	github.com/lestrrat-go/jwx v1.1.5
 	github.com/lucas-clemente/quic-go v0.20.0
-	github.com/magiconair/properties v1.8.1 // indirect
+	github.com/magiconair/properties v1.8.1
 	github.com/mattn/go-isatty v0.0.12
 	github.com/mholt/archiver/v3 v3.5.0
 	github.com/miekg/dns v1.1.41

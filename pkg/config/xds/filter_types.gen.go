@@ -169,6 +169,7 @@ import (
 	_ "github.com/envoyproxy/go-control-plane/envoy/extensions/compression/brotli/decompressor/v3"
 	_ "github.com/envoyproxy/go-control-plane/envoy/extensions/compression/gzip/compressor/v3"
 	_ "github.com/envoyproxy/go-control-plane/envoy/extensions/compression/gzip/decompressor/v3"
+	_ "github.com/envoyproxy/go-control-plane/envoy/extensions/ebayext/filters/http/acl/v3"
 	_ "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/common/dependency/v3"
 	_ "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/common/fault/v3"
 	_ "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/common/matcher/action/v3"
