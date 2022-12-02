@@ -224,7 +224,25 @@ spec:
                     {{- if not .Values.telemetry.v2.prometheus.configOverride.outboundSidecar }}
                     {
                       "debug": "false",
-                      "stat_prefix": "istio"
+                      "stat_prefix": "istio",
+                      "response_code_by_category": true,
+                      "metrics": [
+                        {
+                          "tags_to_remove": [
+                            "response_flags",
+                            "source_version",
+                            "source_canonical_service",
+                            "source_canonical_revision",
+                            "source_cluster",
+                            "source_principal",
+                            "destination_version",
+                            "destination_canonical_service",
+                            "destination_canonical_revision",
+                            "destination_cluster",
+                            "destination_principal"
+                          ]
+                        }
+                      ]
                     }
                     {{- else }}
                     {{ toJson .Values.telemetry.v2.prometheus.configOverride.outboundSidecar | indent 18 }}
@@ -271,12 +289,22 @@ spec:
                     {
                       "debug": "false",
                       "stat_prefix": "istio",
+                      "response_code_by_category": true,
                       "metrics": [
                         {
-                          "dimensions": {
-                            "destination_cluster": "node.metadata['CLUSTER_ID']",
-                            "source_cluster": "downstream_peer.cluster_id"
-                          }
+                          "tags_to_remove": [
+                            "response_flags",
+                            "source_version",
+                            "source_canonical_service",
+                            "source_canonical_revision",
+                            "source_cluster",
+                            "source_principal",
+                            "destination_version",
+                            "destination_canonical_service",
+                            "destination_canonical_revision",
+                            "destination_cluster",
+                            "destination_principal"
+                          ]
                         }
                       ]
                     }
@@ -325,7 +353,25 @@ spec:
                     {
                       "debug": "false",
                       "stat_prefix": "istio",
-                      "disable_host_header_fallback": true
+                      "disable_host_header_fallback": true,
+                      "response_code_by_category": true,
+                      "metrics": [
+                        {
+                          "tags_to_remove": [
+                            "response_flags",
+                            "source_version",
+                            "source_canonical_service",
+                            "source_canonical_revision",
+                            "source_cluster",
+                            "source_principal",
+                            "destination_version",
+                            "destination_canonical_service",
+                            "destination_canonical_revision",
+                            "destination_cluster",
+                            "destination_principal"
+                          ]
+                        }
+                      ]
                     }
                     {{- else }}
                     {{ toJson .Values.telemetry.v2.prometheus.configOverride.gateway | indent 18 }}
@@ -385,12 +431,22 @@ spec:
                     {
                       "debug": "false",
                       "stat_prefix": "istio",
+                      "response_code_by_category": true,
                       "metrics": [
                         {
-                          "dimensions": {
-                            "destination_cluster": "node.metadata['CLUSTER_ID']",
-                            "source_cluster": "downstream_peer.cluster_id"
-                          }
+                          "tags_to_remove": [
+                            "response_flags",
+                            "source_version",
+                            "source_canonical_service",
+                            "source_canonical_revision",
+                            "source_cluster",
+                            "source_principal",
+                            "destination_version",
+                            "destination_canonical_service",
+                            "destination_canonical_revision",
+                            "destination_cluster",
+                            "destination_principal"
+                          ]
                         }
                       ]
                     }
@@ -436,7 +492,25 @@ spec:
                     {{- if not .Values.telemetry.v2.prometheus.configOverride.outboundSidecar }}
                     {
                       "debug": "false",
-                      "stat_prefix": "istio"
+                      "stat_prefix": "istio",
+                      "response_code_by_category": true,
+                      "metrics": [
+                        {
+                          "tags_to_remove": [
+                            "response_flags",
+                            "source_version",
+                            "source_canonical_service",
+                            "source_canonical_revision",
+                            "source_cluster",
+                            "source_principal",
+                            "destination_version",
+                            "destination_canonical_service",
+                            "destination_canonical_revision",
+                            "destination_cluster",
+                            "destination_principal"
+                          ]
+                        }
+                      ]
                     }
                     {{- else }}
                     {{ toJson .Values.telemetry.v2.prometheus.configOverride.outboundSidecar | indent 18 }}
@@ -480,7 +554,25 @@ spec:
                     {{- if not .Values.telemetry.v2.prometheus.configOverride.gateway }}
                     {
                       "debug": "false",
-                      "stat_prefix": "istio"
+                      "stat_prefix": "istio",
+                      "response_code_by_category": true,
+                      "metrics": [
+                        {
+                          "tags_to_remove": [
+                            "response_flags",
+                            "source_version",
+                            "source_canonical_service",
+                            "source_canonical_revision",
+                            "source_cluster",
+                            "source_principal",
+                            "destination_version",
+                            "destination_canonical_service",
+                            "destination_canonical_revision",
+                            "destination_cluster",
+                            "destination_principal"
+                          ]
+                        }
+                      ]
                     }
                     {{- else }}
                     {{ toJson .Values.telemetry.v2.prometheus.configOverride.gateway | indent 18 }}
