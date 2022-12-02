@@ -99,6 +99,10 @@
         "tag_name": "cipher_suite"
       },
       {
+        "tag_name": "worker_id",
+        "regex": ".+?\\.((worker_\\d+)\\.)"
+      },
+      {
         "tag_name": "mongo_prefix",
         "regex": "^mongo\\.(.+?)\\.(collection|cmd|cx_|op_|delays_|decoding_)(.*?)$"
       },
@@ -169,19 +173,19 @@
         "match": {
           "suffix": "istio_request_bytes"
         },
-        "buckets": [1024, 8192, 65536, 524288, 4194304, 8388608, 33554432, 134217728]
+        "buckets": [1024, 8192, 65536, 1048576, 4194304, 8388608]
       },
       {
         "match": {
           "suffix": "istio_response_bytes"
         },
-        "buckets": [1024, 8192, 65536, 524288, 4194304, 8388608, 33554432, 134217728]
+        "buckets": [1024, 8192, 65536, 1048576, 4194304, 8388608]
       },
       {
         "match": {
           "suffix": "istio_request_duration_milliseconds"
         },
-        "buckets": [1, 5, 10, 50, 100, 1000, 5000, 10000, 30000, 60000]
+        "buckets": [5, 50, 100, 1000, 5000, 10000, 60000]
       },
       {
         "match": {
@@ -229,28 +233,29 @@
         "match": {
           "suffix": ".upstream_cx_length_ms"
         },
-        "buckets": [1000, 10000, 30000, 60000, 300000, 600000, 1800000]
+        "buckets": [1000, 30000, 60000, 300000, 600000]
       },
       {
         "match": {
           "suffix": ".downstream_cx_length_ms"
         },
-        "buckets": [10, 100, 1000, 10000, 30000, 60000, 600000]
+        "buckets": [1000, 30000, 60000, 300000, 600000]
       },
       {
         "match": {
           "suffix": ".upstream_rq_time"
         },
-        "buckets": [1, 5, 10, 50, 100, 1000, 5000, 10000, 30000, 60000]
+        "buckets": [5, 50, 100, 1000, 5000, 10000, 60000]
       },
       {
         "match": {
           "suffix": ".downstream_rq_time"
         },
-        "buckets": [1, 5, 10, 50, 100, 1000, 5000, 10000, 30000, 60000]
+        "buckets": [5, 50, 100, 1000, 5000, 10000, 60000]
       }
     ]
   },
+  "stats_flush_interval": "10s",
   "admin": {
     "access_log_path": "/var/log/proxy/admin_access.log",
     "profile_path": "/var/lib/istio/data/envoy.prof",
