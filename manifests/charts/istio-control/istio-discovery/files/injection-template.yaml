@@ -333,8 +333,12 @@ spec:
     {{ end }}
     {{- if .DeploymentMeta.Name }}
     - name: ISTIO_META_WORKLOAD_NAME
+      {{- if eq (toLower .TypeMeta.Kind) `pod` }}
+      value:  {{ index .ObjectMeta.Labels `applicationinstance.tess.io/name` | default .DeploymentMeta.Name  | quote }}
+      {{- else }}
       value: "{{ .DeploymentMeta.Name }}"
-    {{ end }}
+      {{ end }}
+    {{- end }}
     {{- if and .TypeMeta.APIVersion .DeploymentMeta.Name }}
     - name: ISTIO_META_OWNER
       value: kubernetes://apis/{{ .TypeMeta.APIVersion }}/namespaces/{{ valueOrDefault .DeploymentMeta.Namespace `default` }}/{{ toLower .TypeMeta.Kind}}s/{{ .DeploymentMeta.Name }}
