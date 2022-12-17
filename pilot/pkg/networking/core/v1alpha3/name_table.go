@@ -37,7 +37,7 @@ func (configgen *ConfigGeneratorImpl) BuildNameTable(node *model.Proxy, push *mo
 		Table: map[string]*nds.NameTable_NameInfo{},
 	}
 
-	for _, svc := range push.Services(node) {
+	for _, svc := range push.NDSServices(node) {
 		// we cannot take services with wildcards in the address field. The reason
 		// is that even if we provide some dummy IP (subject to enabling this
 		// feature in Envoy), after capturing the traffic from the app, the

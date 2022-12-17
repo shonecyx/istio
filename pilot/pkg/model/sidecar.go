@@ -95,7 +95,7 @@ type SidecarScope struct {
 	// Union of services imported across all egress listeners for use by CDS code.
 	services           []*Service
 	servicesByHostname map[host.Name]*Service
-
+	ndsServices        []*Service
 	// Destination rules imported across all egress listeners. This
 	// contains the computed set based on public/private destination rules
 	// as well as the inherited ones, in addition to the wildcard matches
@@ -200,6 +200,7 @@ func DefaultSidecarScopeForNamespace(ps *PushContext, configNamespace string) *S
 		Namespace:          configNamespace,
 		EgressListeners:    []*IstioEgressListenerWrapper{defaultEgressListener},
 		services:           defaultEgressListener.services,
+		ndsServices:        defaultEgressListener.services,
 		destinationRules:   make(map[host.Name]*config.Config),
 		servicesByHostname: make(map[host.Name]*Service),
 		configDependencies: make(map[uint32]struct{}),
@@ -291,11 +292,12 @@ func ConvertToSidecarScope(ps *PushContext, sidecarConfig *config.Config, config
 	// this sidecar crd. This is needed to generate CDS output
 	out.services = make([]*Service, 0)
 	servicesAdded := make(map[host.Name]*Service)
+	out.ndsServices = make([]*Service, 0)
 	dummyNode := Proxy{
 		ConfigNamespace: configNamespace,
 	}
 
-	addService := func(s *Service) {
+	addService := func(s *Service, outbound bool, nds bool) {
 		if s == nil {
 			return
 		}
@@ -306,7 +308,13 @@ func ConvertToSidecarScope(ps *PushContext, sidecarConfig *config.Config, config
 				Name:      string(s.Hostname),
 				Namespace: s.Attributes.Namespace,
 			})
-			out.services = append(out.services, s)
+
+			if nds {
+				out.ndsServices = append(out.ndsServices, s)
+			}
+			if outbound {
+				out.services = append(out.services, s)
+			}
 		} else if foundSvc.Attributes.Namespace == s.Attributes.Namespace && s.Ports != nil && len(s.Ports) > 0 {
 			// merge the ports to service when each listener generates partial service
 			// we only merge if the found service is in the same namespace as the one we're trying to add
@@ -344,14 +352,15 @@ func ConvertToSidecarScope(ps *PushContext, sidecarConfig *config.Config, config
 				// A VirtualService is defined for this service, skip the serivce here, infer the
 				// outbound cluster from route destination.
 				if _, found := vsHosts[string(s.Hostname)]; found {
+					addService(s, false, true)
 					continue
 				}
-				addService(s)
+				addService(s, true, false)
 			}
 		} else {
 			// First add the explicitly requested services, which take priority
 			for _, s := range listener.services {
-				addService(s)
+				addService(s, true, true)
 			}
 		}
 
@@ -377,7 +386,7 @@ func ConvertToSidecarScope(ps *PushContext, sidecarConfig *config.Config, config
 				// Default to this hostname in our config namespace
 				if s, ok := ps.ServiceIndex.HostnameAndNamespace[host.Name(h)][configNamespace]; ok {
 					// This won't overwrite hostnames that have already been found eg because they were requested in hosts
-					addService(s)
+					addService(s, true, false)
 				} else {
 
 					// We couldn't find the hostname in our config namespace
@@ -400,7 +409,7 @@ func ConvertToSidecarScope(ps *PushContext, sidecarConfig *config.Config, config
 						sort.Strings(ns)
 						// Pick first namespace alphabetically
 						// This won't overwrite hostnames that have already been found eg because they were requested in hosts
-						addService(byNamespace[ns[0]])
+						addService(byNamespace[ns[0]], true, false)
 					}
 				}
 			}
@@ -482,6 +491,16 @@ func (sc *SidecarScope) Services() []*Service {
 	}
 
 	return sc.services
+}
+
+// NDSServices returns the list of services imported across all egress listeners by this
+// Sidecar config, DNS proxy could resolve them to 240.240.x.x for client
+func (sc *SidecarScope) NDSServices() []*Service {
+	if sc == nil {
+		return nil
+	}
+
+	return sc.ndsServices
 }
 
 // DestinationRule returns the destination rule applicable for a given hostname

@@ -718,6 +718,16 @@ func (ps *PushContext) Services(proxy *Proxy) []*Service {
 	return out
 }
 
+// NDSServices returns the services which need to be resloved by DNS proxy
+func (ps *PushContext) NDSServices(proxy *Proxy) []*Service {
+	if proxy != nil && proxy.SidecarScope != nil && proxy.Type == SidecarProxy {
+		return proxy.SidecarScope.NDSServices()
+	}
+
+	// only Sidecar need NDS
+	return ps.Services(proxy)
+}
+
 // ServiceForHostname returns the service associated with a given hostname following SidecarScope
 func (ps *PushContext) ServiceForHostname(proxy *Proxy, hostname host.Name) *Service {
 	if proxy != nil && proxy.SidecarScope != nil {

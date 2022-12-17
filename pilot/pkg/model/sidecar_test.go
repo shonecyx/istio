@@ -1357,8 +1357,10 @@ func TestCreateSidecarScopeWithFilterSidecarCluster(t *testing.T) {
 		// list of available service for a given proxy
 		services        []*Service
 		virtualServices []config.Config
-		// list of services expected to be in the listener
-		excpectedServices []*Service
+		// list of services to be translated into outbound cluster
+		expectedServices []*Service
+		// list of services to be included in NDS
+		expectedNDSServices []*Service
 	}{
 		{
 			"virtual-service-with-inferred-outbound-cluster",
@@ -1371,12 +1373,36 @@ func TestCreateSidecarScopeWithFilterSidecarCluster(t *testing.T) {
 					Ports:    port8000,
 				},
 			},
+			[]*Service{
+				{
+					Hostname: "bar.svc.cluster.local",
+					Ports:    port8000,
+				},
+				{
+					Hostname: "baz.svc.cluster.local",
+					Ports:    port8000,
+				},
+			},
 		},
 		{
 			"virtual-service-without-egress-port",
 			configs19,
 			services20,
 			virtualServices2,
+			[]*Service{
+				{
+					Hostname: "foo.svc.cluster.local",
+					Ports:    port8000,
+				},
+				{
+					Hostname: "bar.svc.cluster.local",
+					Ports:    twoPorts,
+				},
+				{
+					Hostname: "baz.svc.cluster.local",
+					Ports:    twoPorts,
+				},
+			},
 			[]*Service{
 				{
 					Hostname: "foo.svc.cluster.local",
@@ -1468,7 +1494,7 @@ func TestCreateSidecarScopeWithFilterSidecarCluster(t *testing.T) {
 
 			for _, s1 := range sidecarScope.services {
 				found = false
-				for _, s2 := range tt.excpectedServices {
+				for _, s2 := range tt.expectedServices {
 					if s1.Hostname == s2.Hostname {
 						if len(s2.Ports) > 0 {
 							if reflect.DeepEqual(s2.Ports, s1.Ports) {
@@ -1486,7 +1512,7 @@ func TestCreateSidecarScopeWithFilterSidecarCluster(t *testing.T) {
 				}
 			}
 
-			for _, s1 := range tt.excpectedServices {
+			for _, s1 := range tt.expectedServices {
 				found = false
 				for _, s2 := range sidecarScope.services {
 					if s1.Hostname == s2.Hostname {
@@ -1496,6 +1522,19 @@ func TestCreateSidecarScopeWithFilterSidecarCluster(t *testing.T) {
 				}
 				if !found {
 					t.Errorf("Expected service %v in SidecarScope, but did not find it", s1.Hostname)
+				}
+			}
+
+			for _, s1 := range tt.expectedNDSServices {
+				found = false
+				for _, s2 := range sidecarScope.ndsServices {
+					if s1.Hostname == s2.Hostname {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected NDS service %v in SidecarScope, but did not find it", s1.Hostname)
 				}
 			}
 		})
