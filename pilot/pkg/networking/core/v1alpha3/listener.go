@@ -1529,6 +1529,7 @@ func buildListener(opts buildListenerOpts, trafficDirection core.TrafficDirectio
 		ListenerFilters:  listenerFilters,
 		FilterChains:     filterChains,
 		DeprecatedV1:     deprecatedV1,
+		EnableReusePort:  proto.BoolTrue,
 	}
 
 	accessLogBuilder.setListenerAccessLog(opts.push.Mesh, listener, opts.proxy)
