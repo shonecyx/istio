@@ -2653,6 +2653,101 @@ func TestBuildGatewayListeners(t *testing.T) {
 			},
 			[]string{"10.0.0.1_443", "10.0.0.2_443"},
 		},
+		{
+			"gateway with multiple QUIC/HTTP3 servers with bind",
+			&pilot_model.Proxy{
+				ServiceInstances: []*pilot_model.ServiceInstance{
+					{
+						Service: &pilot_model.Service{
+							Hostname: "test",
+						},
+						ServicePort: &pilot_model.Port{
+							Port:     443,
+							Protocol: protocol.UDP,
+						},
+						Endpoint: &pilot_model.IstioEndpoint{
+							EndpointPort: 443,
+						},
+					},
+				},
+			},
+			[]config.Config{
+				{
+					Meta: config.Meta{Name: "gateway1", Namespace: "testns", GroupVersionKind: gvk.Gateway},
+					Spec: &networking.Gateway{
+						Servers: []*networking.Server{
+							{
+								Port:  &networking.Port{Name: "https", Number: 443, Protocol: "HTTPS"},
+								Hosts: []string{"*.example.com"},
+								Bind:  "10.0.0.1",
+								Tls:   &networking.ServerTLSSettings{CredentialName: "test1", Mode: networking.ServerTLSSettings_SIMPLE},
+							},
+						},
+					},
+				},
+				{
+					Meta: config.Meta{Name: "gateway2", Namespace: "testns", GroupVersionKind: gvk.Gateway},
+					Spec: &networking.Gateway{
+						Servers: []*networking.Server{
+							{
+								Port:  &networking.Port{Name: "https", Number: 443, Protocol: "HTTPS"},
+								Hosts: []string{"*.example.org"},
+								Bind:  "10.0.0.2",
+								Tls:   &networking.ServerTLSSettings{CredentialName: "test2", Mode: networking.ServerTLSSettings_SIMPLE},
+							},
+						},
+					},
+				},
+			},
+			[]config.Config{
+				{
+					Meta: config.Meta{Name: uuid.NewString(), Namespace: uuid.NewString(), GroupVersionKind: gvk.VirtualService},
+					Spec: &networking.VirtualService{
+						Gateways: []string{"testns/gateway1"},
+						Hosts:    []string{"*.example.com"},
+						Http: []*networking.HTTPRoute{
+							{
+								Route: []*networking.HTTPRouteDestination{
+									{
+										Destination: &networking.Destination{
+											Host: "foo.example.com",
+											Port: &networking.PortSelector{
+												Number: 80,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				{
+					Meta: config.Meta{Name: uuid.NewString(), Namespace: uuid.NewString(), GroupVersionKind: gvk.VirtualService},
+					Spec: &networking.VirtualService{
+						Gateways: []string{"testns/gateway2"},
+						Hosts:    []string{"*.example.org"},
+						Http: []*networking.HTTPRoute{
+							{
+								Route: []*networking.HTTPRouteDestination{
+									{
+										Destination: &networking.Destination{
+											Host: "bar.example.org",
+											Port: &networking.PortSelector{
+												Number: 80,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			// Expect both TCP listeners for HTTPS and UDP listeners for QUIC/HTTP3 when PILOT_ENABLE_QUIC_LISTENERS=true
+			// Without QUIC enabled: []string{"10.0.0.1_443", "10.0.0.2_443"}
+			// With QUIC enabled: []string{"10.0.0.1_443", "10.0.0.2_443", "udp_10.0.0.1_443", "udp_10.0.0.2_443"}
+			[]string{"10.0.0.1_443", "10.0.0.2_443"},
+		},
 	}
 
 	for _, tt := range cases {
